@@ -25,7 +25,9 @@ import com.google.cloud.storage.Bucket;
 
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExistenceFirestoreException;
+import br.pro.hashi.nfp.dao.exception.ExistenceStorageException;
 import br.pro.hashi.nfp.dao.exception.FormatFirestoreException;
+import br.pro.hashi.nfp.dao.exception.FormatStorageException;
 import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
@@ -188,13 +190,13 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	private String buildPath(String key, String name) {
 		checkRead(key);
 		if (name == null) {
-			throw new FormatFirestoreException("Name cannot be null");
+			throw new FormatStorageException("Name cannot be null");
 		}
 		if (name.isBlank()) {
-			throw new FormatFirestoreException("Name cannot be blank");
+			throw new FormatStorageException("Name cannot be blank");
 		}
 		if (name.indexOf('/') != -1) {
-			throw new FormatFirestoreException("Name cannot have slashes");
+			throw new FormatStorageException("Name cannot have slashes");
 		}
 		return "%s/%s/%s".formatted(path, key, name);
 	}
@@ -396,7 +398,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		String blobPath = buildPath(key, name);
 		init();
 		if (bucket.get(blobPath) != null) {
-			throw new ExistenceFirestoreException("Path %s already exists".formatted(blobPath));
+			throw new ExistenceStorageException("Path %s already exists".formatted(blobPath));
 		}
 		Blob blob = bucket.create(blobPath, stream);
 		blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
@@ -443,7 +445,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
-				throw new ExistenceFirestoreException("Path %s does not exist".formatted(blobPath));
+				throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
 			} else {
 				return null;
 			}
@@ -510,7 +512,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		init();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
-			throw new ExistenceFirestoreException("Path %s does not exist".formatted(blobPath));
+			throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
 		}
 		WriteChannel writer = blob.writer();
 		try {
@@ -569,7 +571,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
-				throw new ExistenceFirestoreException("Path %s does not exist".formatted(blobPath));
+				throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
 			} else {
 				return;
 			}
