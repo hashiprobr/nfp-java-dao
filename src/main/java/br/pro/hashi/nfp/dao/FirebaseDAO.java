@@ -105,14 +105,14 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	private final Class<T> type;
-	private final boolean autokey;
-	private final Firestore firestore;
-	private final Bucket bucket;
 	private final String path;
-	private final CollectionReference collection;
+	private final boolean autokey;
+	private Firestore firestore;
+	private Bucket bucket;
+	private CollectionReference collection;
 
 	@SuppressWarnings("unchecked")
-	protected FirebaseDAO(String path, String name) {
+	protected FirebaseDAO(String path) {
 		ParameterizedType genericType = (ParameterizedType) getClass().getGenericSuperclass();
 		Type[] types = genericType.getActualTypeArguments();
 		this.type = (Class<T>) types[0];
@@ -122,17 +122,6 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		} catch (NoSuchMethodException exception) {
 			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(type.getName()));
 		}
-
-		this.autokey = AutokeyFirebaseObject.class.isAssignableFrom(this.type);
-
-		Firebase firebase;
-		if (name == null) {
-			firebase = Firebase.getInstance();
-		} else {
-			firebase = Firebase.getInstance(name);
-		}
-		this.firestore = firebase.getFirestore();
-		this.bucket = firebase.getBucket();
 
 		if (path == null) {
 			throw new FormatFirestoreException("Path cannot be null");
@@ -144,11 +133,8 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 			throw new FormatFirestoreException("Path cannot have slashes");
 		}
 		this.path = path;
-		this.collection = this.firestore.collection(this.path);
-	}
 
-	protected FirebaseDAO(String path) {
-		this(path, null);
+		this.autokey = AutokeyFirebaseObject.class.isAssignableFrom(this.type);
 	}
 
 	private void checkRead(String key) {
@@ -193,6 +179,12 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		}
 	}
 
+	private void checkQuery(Selection selection) {
+		if (selection == null) {
+			throw new FormatFirestoreException("Selection cannot be null");
+		}
+	}
+
 	private String buildPath(String key, String name) {
 		checkRead(key);
 		if (name == null) {
@@ -207,72 +199,109 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		return "%s/%s/%s".formatted(path, key, name);
 	}
 
+	@SuppressWarnings("unchecked")
+	public <S extends FirebaseDAO<T>> S to(String name) {
+		Firebase firebase;
+		if (name == null) {
+			firebase = Firebase.getInstance();
+		} else {
+			firebase = Firebase.getInstance(name);
+		}
+		this.firestore = firebase.getFirestore();
+		this.bucket = firebase.getBucket();
+		this.collection = this.firestore.collection(this.path);
+		return (S) this;
+	}
+
+	@SuppressWarnings("unchecked")
+	public <S extends FirebaseDAO<T>> S init() {
+		if (firestore == null) {
+			return to(null);
+		} else {
+			return (S) this;
+		}
+	}
+
 	public Selection select() {
+		init();
 		return new Selection(collection);
 	}
 
 	public Selection select(List<String> keys) {
 		checkRead(keys);
+		init();
 		return new Selection(collection.whereIn(FieldPath.documentId(), keys));
 	}
 
 	public Selection selectExcept(List<String> keys) {
 		checkRead(keys);
+		init();
 		return new Selection(collection.whereNotIn(FieldPath.documentId(), keys));
 	}
 
 	public Selection selectWhereIn(String key, List<Object> values) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereIn(key, values));
 	}
 
 	public Selection selectWhereNotIn(String key, List<Object> values) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereNotIn(key, values));
 	}
 
 	public Selection selectWhereEqualTo(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereEqualTo(key, value));
 	}
 
 	public Selection selectWhereNotEqualTo(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereNotEqualTo(key, value));
 	}
 
 	public Selection selectWhereLessThan(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereLessThan(key, value));
 	}
 
 	public Selection selectWhereLessThanOrEqualTo(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereLessThanOrEqualTo(key, value));
 	}
 
 	public Selection selectWhereGreaterThan(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereGreaterThan(key, value));
 	}
 
 	public Selection selectWhereGreaterThanOrEqualTo(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereGreaterThanOrEqualTo(key, value));
 	}
 
 	public Selection selectWhereContains(String key, Object value) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereArrayContains(key, value));
 	}
 
 	public Selection selectWhereContainsAny(String key, List<?> values) {
 		checkRead(key);
+		init();
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
 
 	public boolean exists(String key) {
 		checkRead(key);
+		init();
 		DocumentSnapshot document;
 		try {
 			document = collection.document(key).get().get();
@@ -286,6 +315,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public String create(T value) {
 		checkWrite(value);
+		init();
 		String key;
 		try {
 			DocumentReference document;
@@ -315,6 +345,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public List<String> create(List<T> values) {
 		checkWrite(values);
+		init();
 		String key;
 		DocumentReference document;
 		WriteBatch batch = firestore.batch();
@@ -363,6 +394,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public String create(String key, String name, InputStream stream) {
 		String blobPath = buildPath(key, name);
+		init();
 		if (bucket.get(blobPath) != null) {
 			throw new ExistenceFirestoreException("Path %s already exists".formatted(blobPath));
 		}
@@ -373,6 +405,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public T retrieve(String key, boolean error) {
 		checkRead(key);
+		init();
 		DocumentSnapshot document;
 		try {
 			document = collection.document(key).get().get();
@@ -396,6 +429,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	public List<T> retrieve(Selection selection) {
+		checkQuery(selection);
 		List<T> values = new ArrayList<>();
 		for (DocumentSnapshot document : selection.getDocuments()) {
 			values.add(document.toObject(type));
@@ -405,6 +439,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public String retrieve(String key, String name, boolean error) {
 		String blobPath = buildPath(key, name);
+		init();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
@@ -424,6 +459,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		checkWrite(value);
 		String key = value.getKey();
 		checkRead(key);
+		init();
 		DocumentReference document = collection.document(key);
 		try {
 			if (!document.get().get().exists()) {
@@ -439,6 +475,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public void update(List<T> values) {
 		checkWrite(values);
+		init();
 		WriteBatch batch = firestore.batch();
 		List<String> keys = new ArrayList<>();
 		for (T value : values) {
@@ -470,6 +507,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public String update(String key, String name, InputStream stream) {
 		String blobPath = buildPath(key, name);
+		init();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			throw new ExistenceFirestoreException("Path %s does not exist".formatted(blobPath));
@@ -488,6 +526,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public void delete(String key, boolean error) {
 		checkRead(key);
+		init();
 		DocumentReference document = collection.document(key);
 		try {
 			if (!document.get().get().exists()) {
@@ -510,6 +549,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	public void delete(Selection selection) {
+		checkQuery(selection);
 		WriteBatch batch = firestore.batch();
 		for (DocumentSnapshot document : selection.getDocuments()) {
 			batch.delete(document.getReference());
@@ -525,6 +565,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public void delete(String key, String name, boolean error) {
 		String blobPath = buildPath(key, name);
+		init();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
