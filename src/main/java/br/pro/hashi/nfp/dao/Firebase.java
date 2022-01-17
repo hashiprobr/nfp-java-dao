@@ -29,6 +29,9 @@ public class Firebase {
 				throw new FirebaseException("Already built a default Firebase instance");
 			}
 		} else {
+			if (name.isBlank()) {
+				throw new FirebaseException("Name cannot be blank");
+			}
 			if (instances.containsKey(name)) {
 				throw new FirebaseException("Already built a Firebase instance named %s".formatted(name));
 			} else {
@@ -49,6 +52,9 @@ public class Firebase {
 				return defaultInstance;
 			}
 		} else {
+			if (name.isBlank()) {
+				throw new FirebaseException("Name cannot be blank");
+			}
 			if (instances.containsKey(name)) {
 				return instances.get(name);
 			} else {

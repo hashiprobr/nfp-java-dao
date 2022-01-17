@@ -181,9 +181,24 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		}
 	}
 
+	private void checkIn(List<?> values) {
+		if (values == null) {
+			throw new FormatFirestoreException("List of values cannot be null");
+		}
+		if (values.isEmpty()) {
+			throw new FormatFirestoreException("List of values cannot be empty");
+		}
+	}
+
 	private void checkQuery(Selection selection) {
 		if (selection == null) {
 			throw new FormatFirestoreException("Selection cannot be null");
+		}
+	}
+
+	private void checkFile(InputStream stream) {
+		if (stream == null) {
+			throw new FormatStorageException("Stream cannot be null");
 		}
 	}
 
@@ -243,12 +258,14 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public Selection selectWhereIn(String key, List<Object> values) {
 		checkRead(key);
+		checkIn(values);
 		init();
 		return new Selection(collection.whereIn(key, values));
 	}
 
 	public Selection selectWhereNotIn(String key, List<Object> values) {
 		checkRead(key);
+		checkIn(values);
 		init();
 		return new Selection(collection.whereNotIn(key, values));
 	}
@@ -297,6 +314,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public Selection selectWhereContainsAny(String key, List<?> values) {
 		checkRead(key);
+		checkIn(values);
 		init();
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
@@ -395,6 +413,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	public String create(String key, String name, InputStream stream) {
+		checkFile(stream);
 		String blobPath = buildPath(key, name);
 		init();
 		if (bucket.get(blobPath) != null) {
@@ -508,6 +527,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	public String update(String key, String name, InputStream stream) {
+		checkFile(stream);
 		String blobPath = buildPath(key, name);
 		init();
 		Blob blob = bucket.get(blobPath);
