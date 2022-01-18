@@ -86,7 +86,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 		public Selection descending() {
 			this.descending = true;
-			return null;
+			return this;
 		}
 
 		public Selection offset(int offset) {
@@ -94,7 +94,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 				throw new FormatFirestoreException("Offset must be positive");
 			}
 			this.offset = offset;
-			return null;
+			return this;
 		}
 
 		public Selection limit(int limit) {
@@ -102,7 +102,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 				throw new FormatFirestoreException("Limit must be positive");
 			}
 			this.limit = limit;
-			return null;
+			return this;
 		}
 	}
 
