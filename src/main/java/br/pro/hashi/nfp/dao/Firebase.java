@@ -4,7 +4,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Logger;
 
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.firestore.Firestore;
@@ -22,6 +21,18 @@ public class Firebase {
 	private static final Map<String, Firebase> instances = new HashMap<>();
 
 	public static Firebase buildInstance(String path, String url, String name) {
+		if (path == null) {
+			throw new FirebaseException("Path cannot be null");
+		}
+		if (path.isBlank()) {
+			throw new FirebaseException("Path cannot be blank");
+		}
+		if (url == null) {
+			throw new FirebaseException("URL cannot be null");
+		}
+		if (url.isBlank()) {
+			throw new FirebaseException("URL cannot be blank");
+		}
 		if (name == null) {
 			if (defaultInstance == null) {
 				return defaultInstance = new Firebase(path, url, name);
@@ -70,47 +81,42 @@ public class Firebase {
 	private final String path;
 	private final String url;
 	private final String name;
-	private boolean connected;
 	private FirebaseApp app;
 	private Firestore firestore;
 	private Bucket bucket;
+	private boolean connected;
+	private boolean exists;
 
-	public Firebase(String path, String url, String name) {
+	private Firebase(String path, String url, String name) {
 		this.path = path;
 		this.url = url;
 		this.name = name;
-		this.connected = false;
 		this.app = null;
 		this.firestore = null;
 		this.bucket = null;
+		this.connected = false;
+		this.exists = true;
 	}
 
-	private void check() {
-		if ((name == null && defaultInstance == null) || (name != null && !instances.containsKey(name))) {
+	private void checkExistence() {
+		if (!exists) {
 			throw new FirebaseException("This Firebase instance has been deleted");
 		}
+	}
+
+	private void checkConnection() {
 		if (!connected) {
 			throw new FirebaseException("This Firebase instance is not connected");
 		}
 	}
 
-	private void doDisconnect() {
-		bucket = null;
-		firestore = null;
-		app.delete();
-		app = null;
-		connected = false;
-	}
-
 	public void connect() {
+		checkExistence();
 		if (connected) {
 			throw new FirebaseException("This Firebase instance is already connected");
 		}
-		connected = true;
 
-		Logger logger = Logger.getLogger("br.pro.hashi.nfp.dao");
-
-		logger.info("Connecting Firebase instance...");
+		System.out.println("Connecting Firebase instance...");
 
 		GoogleCredentials credentials;
 		try {
@@ -134,31 +140,43 @@ public class Firebase {
 
 		bucket = StorageClient.getInstance(app).bucket(url);
 
-		logger.info("Firebase instance connected!");
-	}
+		System.out.println("Firebase instance connected");
 
-	public void disconnect() {
-		check();
-		doDisconnect();
+		connected = true;
 	}
 
 	public Firestore getFirestore() {
-		check();
+		checkExistence();
+		checkConnection();
 		return firestore;
 	}
 
 	public Bucket getBucket() {
-		check();
+		checkExistence();
+		checkConnection();
 		return bucket;
 	}
 
+	public void disconnect() {
+		checkExistence();
+		checkConnection();
+		System.out.println("Disconnecting Firebase instance...");
+		app.delete();
+		app = null;
+		firestore = null;
+		bucket = null;
+		connected = false;
+		System.out.println("Firebase instance disconnected");
+	}
+
 	public void delete() {
-		if ((name == null && defaultInstance == null) || (name != null && !instances.containsKey(name))) {
+		if (!exists) {
 			throw new FirebaseException("This Firebase instance has already been deleted");
 		}
 		if (connected) {
-			doDisconnect();
+			throw new FirebaseException("This Firebase instance is still connected");
 		}
+		exists = false;
 		if (name == null) {
 			defaultInstance = null;
 		} else {

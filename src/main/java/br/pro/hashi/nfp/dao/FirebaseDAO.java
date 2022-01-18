@@ -47,6 +47,32 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 			this.limit = 0;
 		}
 
+		private QuerySnapshot getDocuments() {
+			Query query = this.query;
+			if (orderBy != null) {
+				if (descending) {
+					query = query.orderBy(orderBy, Direction.DESCENDING);
+				} else {
+					query = query.orderBy(orderBy);
+				}
+			}
+			if (offset > 0) {
+				query = query.offset(offset);
+			}
+			if (limit > 0) {
+				query = query.limit(limit);
+			}
+			QuerySnapshot documents;
+			try {
+				documents = query.get().get();
+			} catch (ExecutionException exception) {
+				throw new ExecutionFirestoreException(exception);
+			} catch (InterruptedException exception) {
+				throw new InterruptedFirestoreException(exception);
+			}
+			return documents;
+		}
+
 		public Selection orderBy(String orderBy) {
 			if (orderBy == null) {
 				throw new FormatFirestoreException("Order key cannot be null");
@@ -78,36 +104,10 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 			this.limit = limit;
 			return null;
 		}
-
-		private QuerySnapshot getDocuments() {
-			Query query = this.query;
-			if (orderBy != null) {
-				if (descending) {
-					query = query.orderBy(orderBy, Direction.DESCENDING);
-				} else {
-					query = query.orderBy(orderBy);
-				}
-			}
-			if (offset > 0) {
-				query = query.offset(offset);
-			}
-			if (limit > 0) {
-				query = query.limit(limit);
-			}
-			QuerySnapshot documents;
-			try {
-				documents = query.get().get();
-			} catch (ExecutionException exception) {
-				throw new ExecutionFirestoreException(exception);
-			} catch (InterruptedException exception) {
-				throw new InterruptedFirestoreException(exception);
-			}
-			return documents;
-		}
 	}
 
-	private final Class<T> type;
 	private final String path;
+	private final Class<T> type;
 	private final boolean autokey;
 	private Firestore firestore;
 	private Bucket bucket;
@@ -115,16 +115,6 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	@SuppressWarnings("unchecked")
 	protected FirebaseDAO(String path) {
-		ParameterizedType genericType = (ParameterizedType) getClass().getGenericSuperclass();
-		Type[] types = genericType.getActualTypeArguments();
-		this.type = (Class<T>) types[0];
-
-		try {
-			type.getConstructor();
-		} catch (NoSuchMethodException exception) {
-			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(type.getName()));
-		}
-
 		if (path == null) {
 			throw new FormatFirestoreException("Path cannot be null");
 		}
@@ -136,7 +126,21 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		}
 		this.path = path;
 
+		ParameterizedType genericType = (ParameterizedType) getClass().getGenericSuperclass();
+		Type[] types = genericType.getActualTypeArguments();
+		this.type = (Class<T>) types[0];
+
+		try {
+			this.type.getConstructor();
+		} catch (NoSuchMethodException exception) {
+			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(this.type.getName()));
+		}
+
 		this.autokey = AutokeyFirebaseObject.class.isAssignableFrom(this.type);
+
+		this.firestore = null;
+		this.bucket = null;
+		this.collection = null;
 	}
 
 	private void checkRead(String key) {
@@ -224,15 +228,15 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		} else {
 			firebase = Firebase.getInstance(name);
 		}
-		this.firestore = firebase.getFirestore();
-		this.bucket = firebase.getBucket();
-		this.collection = this.firestore.collection(this.path);
+		firestore = firebase.getFirestore();
+		bucket = firebase.getBucket();
+		collection = firestore.collection(path);
 		return (S) this;
 	}
 
 	@SuppressWarnings("unchecked")
 	public <S extends FirebaseDAO<T>> S init() {
-		if (firestore == null) {
+		if (collection == null) {
 			return to(null);
 		} else {
 			return (S) this;
