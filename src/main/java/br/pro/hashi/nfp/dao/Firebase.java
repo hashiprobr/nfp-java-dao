@@ -33,9 +33,11 @@ public class Firebase {
 		if (url.isBlank()) {
 			throw new FirebaseException("URL cannot be blank");
 		}
+		Firebase firebase;
 		if (name == null) {
 			if (defaultInstance == null) {
-				return defaultInstance = new Firebase(path, url, name);
+				firebase = new Firebase(path, url);
+				defaultInstance = firebase;
 			} else {
 				throw new FirebaseException("Already built a default Firebase instance");
 			}
@@ -46,9 +48,11 @@ public class Firebase {
 			if (instances.containsKey(name)) {
 				throw new FirebaseException("Already built a Firebase instance named %s".formatted(name));
 			} else {
-				return instances.put(name, new Firebase(path, url, name));
+				firebase = new Firebase(path, url, name);
+				instances.put(name, firebase);
 			}
 		}
+		return firebase;
 	}
 
 	public static Firebase buildInstance(String path, String url) {
@@ -96,6 +100,10 @@ public class Firebase {
 		this.bucket = null;
 		this.connected = false;
 		this.exists = true;
+	}
+
+	private Firebase(String path, String url) {
+		this(path, url, null);
 	}
 
 	private void checkExistence() {
