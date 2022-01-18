@@ -140,9 +140,9 @@ public class Firebase {
 
 		bucket = StorageClient.getInstance(app).bucket(url);
 
-		System.out.println("Firebase instance connected");
-
 		connected = true;
+
+		System.out.println("Firebase instance connected");
 	}
 
 	public Firestore getFirestore() {
