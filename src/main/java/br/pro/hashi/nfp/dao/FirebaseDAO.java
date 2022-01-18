@@ -344,14 +344,14 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		try {
 			DocumentReference document;
 			if (autokey) {
-				if (value.getKey() != null) {
+				if (value.key() != null) {
 					throw new FormatFirestoreException("Key must be null");
 				}
 				document = collection.document();
 				key = document.getId();
 				((AutokeyFirebaseObject) value).setKey(key);
 			} else {
-				key = value.getKey();
+				key = value.key();
 				checkRead(key);
 				document = collection.document(key);
 				if (document.get().get().exists()) {
@@ -376,7 +376,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		List<String> keys = new ArrayList<>();
 		if (autokey) {
 			for (T value : values) {
-				if (value.getKey() != null) {
+				if (value.key() != null) {
 					throw new FormatFirestoreException("All keys must be null");
 				}
 				document = collection.document();
@@ -387,7 +387,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 			}
 		} else {
 			for (T value : values) {
-				key = value.getKey();
+				key = value.key();
 				checkRead(key);
 				document = collection.document(key);
 				batch.set(document, value);
@@ -482,7 +482,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public void update(T value) {
 		checkWrite(value);
-		String key = value.getKey();
+		String key = value.key();
 		checkRead(key);
 		init();
 		DocumentReference document = collection.document(key);
@@ -504,7 +504,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		WriteBatch batch = firestore.batch();
 		List<String> keys = new ArrayList<>();
 		for (T value : values) {
-			String key = value.getKey();
+			String key = value.key();
 			checkRead(key);
 			batch.set(collection.document(key), value);
 			keys.add(key);
