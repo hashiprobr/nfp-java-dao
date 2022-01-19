@@ -4,6 +4,10 @@ nfp-java-dao
 **[Not-For-Production](https://github.com/hashiprobr/nfp) DAO framework based on
 Cloud Firestore and Storage.**
 
+If your project is a class assignment or a simple prototype, use this framework
+to store objects and files remotely with minimum boilerplate. All you need is a
+Firebase project and a couple of lines of code.
+
 
 Quick setup
 -----------
@@ -23,10 +27,10 @@ Quick setup
    * click on the **Generate New Private Key** button and confirm.
 
 6) Rename the private key to something simpler like `main.json` and move it to
-   the repository root. **Never commit this file, as it is private.** All JSON
-   files are in the `.gitignore` file by default.
+   somewhere safe. **Never commit this file, as it is private.**
 
-7) Open the repository as an Eclipse project.
+7) [Add the framework to your
+   project.](https://mvnrepository.com/artifact/io.github.hashiprobr/nfp-dao)
 
 
 Quick start
@@ -34,8 +38,8 @@ Quick start
 
 ### Creating a storable object
 
-Any instance of a subclass of `FirestoreObject` can be stored. Being a subclass
-of `FirestoreObject` only requires a method `key` that receives no arguments and
+Any instance of a subclass of `FirebaseObject` can be stored. Being a subclass
+of `FirebaseObject` only requires a method `key` that receives no arguments and
 returns a string.
 
 This method is required because Firestore documents must be uniquely identified
@@ -80,13 +84,13 @@ public class User extends FirebaseObject {
 ### Creating a DAO for the object
 
 A DAO for an `User`, as defined above, is an instance of a subclass of
-`FirestoreDAO`, with `User` as its parameter. The super constructor must receive
+`FirebaseDAO`, with `User` as its parameter. The super constructor must receive
 the name of the Firestore collection where you want the objects to be stored.
 
 In the example below, we define that the collection is named `"users"`.
 
 ``` java
-public class UserDAO extends FirestoreDAO<User> {
+public class UserDAO extends FirebaseDAO<User> {
     public UserDAO() {
         super("users");
     }
@@ -109,6 +113,9 @@ public static void main(String[] args) {
 ```
 
 ### Using the DAO for CRUD operations
+
+The operations use the existent fields, getters, and setters as a reference for
+what should be stored.
 
 ``` java
 UserDAO dao = new UserDAO();
@@ -136,9 +143,9 @@ dao.delete("123");
 Objects with automatic keys
 ---------------------------
 
-If the object is the instance of a subclass of `AutokeyFirestoreObject`, the
-method `key` is not necessary. Instead, `AutokeyFirestoreObject` provides its
-own `getKey` and `setKey` methods, which are used automatically.
+If the object is the instance of a subclass of `AutokeyFirebaseObject`, the
+method `key` is not necessary. Instead, `AutokeyFirebaseObject` provides its own
+`getKey` and `setKey` methods, which are used automatically.
 
 In the example below, we assume that no field of a group is unique.
 
@@ -163,7 +170,7 @@ public class Group extends AutokeyFirebaseObject {
 Creating a DAO in this case is exactly the same.
 
 ``` java
-public class GroupDAO extends FirestoreDAO<Group> {
+public class GroupDAO extends FirebaseDAO<Group> {
     public GroupDAO() {
         super("groups");
     }
