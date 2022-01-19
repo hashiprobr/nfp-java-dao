@@ -1,7 +1,8 @@
 nfp-java-dao
 ============
 
-**Not-For-Production DAO framework based on Cloud Firestore and Storage.**
+**[Not-For-Production](https://github.com/hashiprobr/nfp) DAO framework based on
+Cloud Firestore and Storage.**
 
 
 Quick setup
@@ -21,9 +22,9 @@ Quick setup
 
    * click on the **Generate New Private Key** button and confirm.
 
-6) Rename the private key to `main.json` and move it to the repository root.
-   **Never commit this file, as it is private.** All JSON files are in the
-   `.gitignore` file by default.
+6) Rename the private key to something simpler like `main.json` and move it to
+   the repository root. **Never commit this file, as it is private.** All JSON
+   files are in the `.gitignore` file by default.
 
 7) Open the repository as an Eclipse project.
 
@@ -45,34 +46,34 @@ In the example below, we assume that the `id` of an user is unique.
 
 ``` java
 public class User extends FirebaseObject {
-	private int id;
-	private String name;
+    private int id;
+    private String name;
 
     public User(int id, String name) {
         this.id = id;
         this.name = name;
     }
 
-	public int getId() {
-		return id;
-	}
+    public int getId() {
+        return id;
+    }
 
-	public void setId(int id) {
-		this.id = id;
-	}
+    public void setId(int id) {
+        this.id = id;
+    }
 
-	public String getName() {
-		return name;
-	}
+    public String getName() {
+        return name;
+    }
 
-	public void setName(String name) {
-		this.name = name;
-	}
+    public void setName(String name) {
+        this.name = name;
+    }
 
-	@Override
-	public String key() {
-		return Integer.toString(id);
-	}
+    @Override
+    public String key() {
+        return Integer.toString(id);
+    }
 }
 ```
 
@@ -143,19 +144,19 @@ In the example below, we assume that no field of a group is unique.
 
 ``` java
 public class Group extends AutokeyFirebaseObject {
-	private String name;
+    private String name;
 
     public Group(String name) {
         this.name = name;
     }
 
-	public String getName() {
-		return name;
-	}
+    public String getName() {
+        return name;
+    }
 
-	public void setName(String name) {
-		this.name = name;
-	}
+    public void setName(String name) {
+        this.name = name;
+    }
 }
 ```
 
@@ -235,7 +236,7 @@ The `retrieve` and `delete` methods have a query version.
 
 * `public List<T> retrieve(FirebaseDAO<T>.Selection selection)`
 
-* `public void delete(String key, String name)`
+* `public void delete(FirebaseDAO<T>.Selection selection)`
 
 To build a selection, you only need to call a select method from the DAO. This
 method can be chained with the `orderBy`, `descending`, `offset`, and `limit`
@@ -251,7 +252,7 @@ GroupDAO.Selection selection = dao.select().offset(10).limit(20);
 dao.delete(selection)
 ```
 
-All the select methods available are listed below.
+All select methods available are listed below.
 
 * `select()`: all objects.
 
@@ -286,7 +287,7 @@ All the select methods available are listed below.
   sortable)*
 
 * `selectWhereContains(String name, Object value)`: objects with the value of
-  field `name` containing `value`. *(assumes the field is array)*
+  field `name` containing `value`. *(assumes the field is an array)*
 
 * `selectWhereContainsAny(String name, Object value)`: objects with the value of
-  field `name` containing `value`. *(assumes the field is array)*
+  field `name` containing `value`. *(assumes the field is an array)*
