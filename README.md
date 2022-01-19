@@ -235,6 +235,10 @@ These methods are supposed to be used for a file that is directly related to a
 storable object. Therefore, the file path is `<collection>/<key>/<name>` and it
 is expected that the key is from this object.
 
+The `create`, `retrieve`, and `update` methods return an URL that can be used to
+access the file as an static resource. For example, as the `src` of an `img`.
+Please note that, due to some limitations, **updating a file changes its URL**.
+
 
 Query operations
 ----------------
