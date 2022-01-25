@@ -165,7 +165,7 @@ public class Group extends AutokeyFirebaseObject {
 Creating a DAO in this case is exactly the same.
 
 ``` java
-public class GroupDAO extends FirebaseDAO<Group> {
+public class GroupDAO extends DAO<Group> {
     public GroupDAO() {
         super("groups");
     }
@@ -240,9 +240,9 @@ Query operations
 
 The `retrieve` and `delete` methods have a query version.
 
-* `public List<T> retrieve(FirebaseDAO<T>.Selection selection)`
+* `public List<T> retrieve(DAO<T>.Selection selection)`
 
-* `public void delete(FirebaseDAO<T>.Selection selection)`
+* `public void delete(DAO<T>.Selection selection)`
 
 To build a selection, you only need to call a select method from the DAO. This
 method can be chained with the `orderBy`, `descending`, `offset`, and `limit`
