@@ -20,6 +20,28 @@ public class Firebase {
 	private static Firebase defaultInstance = null;
 	private static final Map<String, Firebase> instances = new HashMap<>();
 
+	private static boolean exists(String name) {
+		if (name == null) {
+			return defaultInstance != null;
+		} else {
+			return instances.containsKey(name);
+		}
+	}
+
+	private static void disconnect(Firebase firebase) {
+		if (firebase.connected) {
+			firebase.doDisconnect();
+		}
+	}
+
+	private static void delete(String name) {
+		if (name == null) {
+			defaultInstance = null;
+		} else {
+			instances.remove(name);
+		}
+	}
+
 	public static Firebase buildInstance(String path, String url, String name) {
 		if (path == null) {
 			throw new FirebaseException("Path cannot be null");
@@ -62,7 +84,7 @@ public class Firebase {
 	public static Firebase getInstance(String name) {
 		if (name == null) {
 			if (defaultInstance == null) {
-				throw new FirebaseException("Did not build a default Firebase instance");
+				throw new FirebaseException("A default Firebase instance does not exist");
 			} else {
 				return defaultInstance;
 			}
@@ -73,13 +95,24 @@ public class Firebase {
 			if (instances.containsKey(name)) {
 				return instances.get(name);
 			} else {
-				throw new FirebaseException("Did not build a Firebase instance named %s".formatted(name));
+				throw new FirebaseException("A Firebase instance named %s does not exist".formatted(name));
 			}
 		}
 	}
 
 	public static Firebase getInstance() {
 		return getInstance(null);
+	}
+
+	public static void clear() {
+		if (defaultInstance != null) {
+			disconnect(defaultInstance);
+			defaultInstance = null;
+		}
+		for (Firebase firebase : instances.values()) {
+			disconnect(firebase);
+		}
+		instances.clear();
 	}
 
 	private final String path;
@@ -89,7 +122,6 @@ public class Firebase {
 	private Firestore firestore;
 	private Bucket bucket;
 	private boolean connected;
-	private boolean exists;
 
 	private Firebase(String path, String url, String name) {
 		this.path = path;
@@ -99,7 +131,6 @@ public class Firebase {
 		this.firestore = null;
 		this.bucket = null;
 		this.connected = false;
-		this.exists = true;
 	}
 
 	private Firebase(String path, String url) {
@@ -107,7 +138,7 @@ public class Firebase {
 	}
 
 	private void checkExistence() {
-		if (!exists) {
+		if (!exists(name)) {
 			throw new FirebaseException("This Firebase instance has been deleted");
 		}
 	}
@@ -116,6 +147,16 @@ public class Firebase {
 		if (!connected) {
 			throw new FirebaseException("This Firebase instance is not connected");
 		}
+	}
+
+	private void doDisconnect() {
+		System.out.println("Disconnecting Firebase instance...");
+		app.delete();
+		app = null;
+		firestore = null;
+		bucket = null;
+		connected = false;
+		System.out.println("Firebase instance disconnected");
 	}
 
 	public void connect() {
@@ -153,42 +194,33 @@ public class Firebase {
 		System.out.println("Firebase instance connected");
 	}
 
-	public Firestore getFirestore() {
+	public void check() {
 		checkExistence();
 		checkConnection();
+	}
+
+	public Firestore getFirestore() {
+		check();
 		return firestore;
 	}
 
 	public Bucket getBucket() {
-		checkExistence();
-		checkConnection();
+		check();
 		return bucket;
 	}
 
 	public void disconnect() {
-		checkExistence();
-		checkConnection();
-		System.out.println("Disconnecting Firebase instance...");
-		app.delete();
-		app = null;
-		firestore = null;
-		bucket = null;
-		connected = false;
-		System.out.println("Firebase instance disconnected");
+		check();
+		doDisconnect();
 	}
 
 	public void delete() {
-		if (!exists) {
+		if (!exists(name)) {
 			throw new FirebaseException("This Firebase instance has already been deleted");
 		}
 		if (connected) {
 			throw new FirebaseException("This Firebase instance is still connected");
 		}
-		exists = false;
-		if (name == null) {
-			defaultInstance = null;
-		} else {
-			instances.remove(name);
-		}
+		delete(name);
 	}
 }

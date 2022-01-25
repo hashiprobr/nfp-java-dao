@@ -109,9 +109,10 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	private final String path;
 	private final Class<T> type;
 	private final boolean autokey;
+	private Firebase firebase;
 	private Firestore firestore;
-	private Bucket bucket;
 	private CollectionReference collection;
+	private Bucket bucket;
 
 	@SuppressWarnings("unchecked")
 	protected FirebaseDAO(String path) {
@@ -138,9 +139,10 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 		this.autokey = AutokeyFirebaseObject.class.isAssignableFrom(this.type);
 
+		this.firebase = null;
 		this.firestore = null;
-		this.bucket = null;
 		this.collection = null;
+		this.bucket = null;
 	}
 
 	private void checkRead(String key) {
@@ -222,23 +224,23 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	@SuppressWarnings("unchecked")
 	public <S extends FirebaseDAO<T>> S to(String name) {
-		Firebase firebase;
 		if (name == null) {
 			firebase = Firebase.getInstance();
 		} else {
 			firebase = Firebase.getInstance(name);
 		}
 		firestore = firebase.getFirestore();
-		bucket = firebase.getBucket();
 		collection = firestore.collection(path);
+		bucket = firebase.getBucket();
 		return (S) this;
 	}
 
 	@SuppressWarnings("unchecked")
 	public <S extends FirebaseDAO<T>> S init() {
-		if (collection == null) {
+		if (firebase == null) {
 			return to(null);
 		} else {
+			firebase.check();
 			return (S) this;
 		}
 	}
