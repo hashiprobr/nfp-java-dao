@@ -137,18 +137,6 @@ public class Firebase {
 		this(path, url, null);
 	}
 
-	private void checkExistence() {
-		if (!exists(name)) {
-			throw new FirebaseException("This Firebase instance has been deleted");
-		}
-	}
-
-	private void checkConnection() {
-		if (!connected) {
-			throw new FirebaseException("This Firebase instance is not connected");
-		}
-	}
-
 	private void doDisconnect() {
 		System.out.println("Disconnecting Firebase instance...");
 		app.delete();
@@ -157,6 +145,18 @@ public class Firebase {
 		bucket = null;
 		connected = false;
 		System.out.println("Firebase instance disconnected");
+	}
+
+	public void checkExistence() {
+		if (!exists(name)) {
+			throw new FirebaseException("This Firebase instance has been deleted");
+		}
+	}
+
+	public void checkConnection() {
+		if (!connected) {
+			throw new FirebaseException("This Firebase instance is not connected");
+		}
 	}
 
 	public void connect() {
@@ -194,23 +194,17 @@ public class Firebase {
 		System.out.println("Firebase instance connected");
 	}
 
-	public void check() {
-		checkExistence();
-		checkConnection();
-	}
-
 	public Firestore getFirestore() {
-		check();
 		return firestore;
 	}
 
 	public Bucket getBucket() {
-		check();
 		return bucket;
 	}
 
 	public void disconnect() {
-		check();
+		checkExistence();
+		checkConnection();
 		doDisconnect();
 	}
 

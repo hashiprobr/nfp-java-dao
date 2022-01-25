@@ -38,25 +38,19 @@ Quick start
 
 ### Creating a storable object
 
-Any instance of a subclass of `FirebaseObject` can be stored. Being a subclass
-of `FirebaseObject` only requires a method `key` that receives no arguments and
-returns a string.
+Being a storable object only requires annotating one of its class fields with
+`Key`. This is required because Firestore documents must be uniquely identified.
 
-This method is required because Firestore documents must be uniquely identified
-by a string. If your class already has an unique field, it can simply return
-this field, converting to string if necessary.
+Firestore only accepts strings as keys. If the annotated field is not a string,
+the actual value is obtained from `toString()`.
 
 In the example below, we assume that the `id` of an user is unique.
 
 ``` java
 public class User extends FirebaseObject {
+    @Key
     private int id;
     private String name;
-
-    public User(int id, String name) {
-        this.id = id;
-        this.name = name;
-    }
 
     public int getId() {
         return id;
@@ -73,24 +67,19 @@ public class User extends FirebaseObject {
     public void setName(String name) {
         this.name = name;
     }
-
-    @Override
-    public String key() {
-        return Integer.toString(id);
-    }
 }
 ```
 
 ### Creating a DAO for the object
 
-A DAO for an `User`, as defined above, is an instance of a subclass of
-`FirebaseDAO`, with `User` as its parameter. The super constructor must receive
-the name of the Firestore collection where you want the objects to be stored.
+A DAO for an `User`, as defined above, is an instance of a subclass of `DAO`,
+with `User` as its parameter. The super constructor must receive the name of the
+Firestore collection where you want the objects to be stored.
 
 In the example below, we define that the collection is named `"users"`.
 
 ``` java
-public class UserDAO extends FirebaseDAO<User> {
+public class UserDAO extends DAO<User> {
     public UserDAO() {
         super("users");
     }
@@ -143,18 +132,24 @@ dao.delete("123");
 Objects with automatic keys
 ---------------------------
 
-If the object is the instance of a subclass of `AutokeyFirebaseObject`, the
-method `key` is not necessary. Instead, `AutokeyFirebaseObject` provides its own
-`getKey` and `setKey` methods, which are used automatically.
+If none of the class fields are unique, it is possible to add a new string field
+and annotate it with `@Autokey`. This will make it be defined automatically.
 
-In the example below, we assume that no field of a group is unique.
+In the example below, we assume that the `name` of a group is not unique, so it
+cannot be used as the key.
 
 ``` java
 public class Group extends AutokeyFirebaseObject {
+    @Autokey
+    private String key;
     private String name;
 
-    public Group(String name) {
-        this.name = name;
+    public String getKey() {
+        return key;
+    }
+
+    public void setKey(String key) {
+        this.key = key;
     }
 
     public String getName() {

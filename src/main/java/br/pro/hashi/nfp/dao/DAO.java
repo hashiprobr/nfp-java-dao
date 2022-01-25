@@ -2,6 +2,7 @@ package br.pro.hashi.nfp.dao;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
@@ -23,6 +24,7 @@ import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 
+import br.pro.hashi.nfp.dao.exception.AccessFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExistenceFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExistenceStorageException;
@@ -31,7 +33,7 @@ import br.pro.hashi.nfp.dao.exception.FormatStorageException;
 import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
-public abstract class FirebaseDAO<T extends FirebaseObject> {
+public abstract class DAO<T> {
 	public class Selection {
 		private final Query query;
 		private String orderBy;
@@ -108,14 +110,15 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	private final String path;
 	private final Class<T> type;
-	private final boolean autokey;
+	private Field field;
+	private boolean auto;
 	private Firebase firebase;
 	private Firestore firestore;
 	private CollectionReference collection;
 	private Bucket bucket;
 
 	@SuppressWarnings("unchecked")
-	protected FirebaseDAO(String path) {
+	protected DAO(String path) {
 		if (path == null) {
 			throw new FormatFirestoreException("Path cannot be null");
 		}
@@ -131,18 +134,91 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		Type[] types = genericType.getActualTypeArguments();
 		this.type = (Class<T>) types[0];
 
+		String className = this.type.getName();
+
 		try {
 			this.type.getConstructor();
 		} catch (NoSuchMethodException exception) {
-			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(this.type.getName()));
+			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(className));
 		}
 
-		this.autokey = AutokeyFirebaseObject.class.isAssignableFrom(this.type);
+		this.field = null;
+		this.auto = false;
+		for (Field field : this.type.getDeclaredFields()) {
+			String fieldName = field.getName();
+			if (field.isAnnotationPresent(Key.class)) {
+				if (field.isAnnotationPresent(Autokey.class)) {
+					throw new FormatFirestoreException("Field %s of class %s cannot be both a key and an autokey".formatted(fieldName, className));
+				} else {
+					if (this.field == null) {
+						this.field = field;
+					} else {
+						if (this.auto) {
+							throw new FormatFirestoreException("Class %s cannot have both an autokey and a key".formatted(className));
+						} else {
+							throw new FormatFirestoreException("Class %s cannot have more than one key".formatted(className));
+						}
+					}
+				}
+			} else {
+				if (field.isAnnotationPresent(Autokey.class)) {
+					if (this.field == null) {
+						if (field.getType() != String.class) {
+							throw new FormatFirestoreException("Autokey %s of class %s must be a string".formatted(fieldName, className));
+						}
+						this.field = field;
+						this.auto = true;
+					} else {
+						if (this.auto) {
+							throw new FormatFirestoreException("Class %s cannot have more than one autokey".formatted(className));
+						} else {
+							throw new FormatFirestoreException("Class %s cannot have both a key and an autokey".formatted(className));
+						}
+					}
+				}
+			}
+		}
+
+		if (this.field == null) {
+			throw new FormatFirestoreException("Class %s must have either a key or an autokey".formatted(className));
+		}
+		this.field.setAccessible(true);
 
 		this.firebase = null;
 		this.firestore = null;
 		this.collection = null;
 		this.bucket = null;
+	}
+
+	private String get(T value) {
+		Object key;
+		try {
+			key = field.get(value);
+		} catch (IllegalAccessException exception) {
+			throw new AccessFirestoreException(exception);
+		}
+		if (key == null) {
+			return null;
+		} else {
+			return key.toString();
+		}
+	}
+
+	private void set(T value, String key) {
+		try {
+			field.set(value, key);
+		} catch (IllegalAccessException exception) {
+			throw new AccessFirestoreException(exception);
+		}
+	}
+
+	private void refresh() {
+		Firestore instance = firebase.getFirestore();
+		if (firestore != instance) {
+			firestore = instance;
+			collection = firestore.collection(path);
+		}
+		bucket = firebase.getBucket();
 	}
 
 	private void checkRead(String key) {
@@ -223,24 +299,25 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <S extends FirebaseDAO<T>> S to(String name) {
+	public <S extends DAO<T>> S to(String name) {
 		if (name == null) {
 			firebase = Firebase.getInstance();
 		} else {
 			firebase = Firebase.getInstance(name);
 		}
-		firestore = firebase.getFirestore();
-		collection = firestore.collection(path);
-		bucket = firebase.getBucket();
+		firebase.checkConnection();
+		refresh();
 		return (S) this;
 	}
 
 	@SuppressWarnings("unchecked")
-	public <S extends FirebaseDAO<T>> S init() {
+	public <S extends DAO<T>> S init() {
 		if (firebase == null) {
 			return to(null);
 		} else {
-			firebase.check();
+			firebase.checkExistence();
+			firebase.checkConnection();
+			refresh();
 			return (S) this;
 		}
 	}
@@ -345,15 +422,15 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		String key;
 		try {
 			DocumentReference document;
-			if (autokey) {
-				if (value.key() != null) {
+			if (auto) {
+				if (get(value) != null) {
 					throw new FormatFirestoreException("Key must be null");
 				}
 				document = collection.document();
 				key = document.getId();
-				((AutokeyFirebaseObject) value).setKey(key);
+				set(value, key);
 			} else {
-				key = value.key();
+				key = get(value);
 				checkRead(key);
 				document = collection.document(key);
 				if (document.get().get().exists()) {
@@ -376,20 +453,20 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		DocumentReference document;
 		WriteBatch batch = firestore.batch();
 		List<String> keys = new ArrayList<>();
-		if (autokey) {
+		if (auto) {
 			for (T value : values) {
-				if (value.key() != null) {
+				if (get(value) != null) {
 					throw new FormatFirestoreException("All keys must be null");
 				}
 				document = collection.document();
 				key = document.getId();
-				((AutokeyFirebaseObject) value).setKey(key);
+				set(value, key);
 				batch.set(document, value);
 				keys.add(key);
 			}
 		} else {
 			for (T value : values) {
-				key = value.key();
+				key = get(value);
 				checkRead(key);
 				document = collection.document(key);
 				batch.set(document, value);
@@ -484,7 +561,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 
 	public void update(T value) {
 		checkWrite(value);
-		String key = value.key();
+		String key = get(value);
 		checkRead(key);
 		init();
 		DocumentReference document = collection.document(key);
@@ -506,7 +583,7 @@ public abstract class FirebaseDAO<T extends FirebaseObject> {
 		WriteBatch batch = firestore.batch();
 		List<String> keys = new ArrayList<>();
 		for (T value : values) {
-			String key = value.key();
+			String key = get(value);
 			checkRead(key);
 			batch.set(collection.document(key), value);
 			keys.add(key);
