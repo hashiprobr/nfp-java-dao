@@ -48,7 +48,7 @@ class FirebaseManagerImpl implements FirebaseManager {
 	}
 
 	@Override
-	public Firebase buildInstance(String path, String url, String name) {
+	public Firebase create(String path, String url, String name) {
 		Firebase firebase;
 
 		if (path == null) {
@@ -98,7 +98,7 @@ class FirebaseManagerImpl implements FirebaseManager {
 	}
 
 	@Override
-	public Firebase getInstance(String name) {
+	public Firebase get(String name) {
 		Firebase firebase;
 		if (name == null) {
 			if (defaultInstance == null) {

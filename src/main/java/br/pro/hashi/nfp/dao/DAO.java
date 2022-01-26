@@ -226,9 +226,9 @@ public abstract class DAO<T> {
 	@SuppressWarnings("unchecked")
 	public <S extends DAO<T>> S using(FirebaseManager manager, String name) {
 		if (name == null) {
-			firebase = manager.getInstance();
+			firebase = manager.get();
 		} else {
-			firebase = manager.getInstance(name);
+			firebase = manager.get(name);
 		}
 		firebase.checkConnection();
 		refresh();

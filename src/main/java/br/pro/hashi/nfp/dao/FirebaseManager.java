@@ -7,16 +7,16 @@ public interface FirebaseManager {
 		return contains(null);
 	}
 
-	Firebase buildInstance(String path, String url, String name);
+	Firebase create(String path, String url, String name);
 
-	default Firebase buildInstance(String path, String url) {
-		return buildInstance(path, url, null);
+	default Firebase create(String path, String url) {
+		return create(path, url, null);
 	}
 
-	Firebase getInstance(String name);
+	Firebase get(String name);
 
-	default Firebase getInstance() {
-		return getInstance(null);
+	default Firebase get() {
+		return get(null);
 	}
 
 	void remove(String name);

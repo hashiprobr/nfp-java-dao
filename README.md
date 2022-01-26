@@ -96,7 +96,7 @@ In the example below, we assume that `"main.json"` is the private key and
 
 ``` java
 public static void main(String[] args) {
-    Firebase firebase = Firebase.Manager().buildInstance("main.json", "example-12345.appspot.com");
+    Firebase firebase = Firebase.Manager().create("main.json", "example-12345.appspot.com");
     firebase.connect();
 }
 ```
