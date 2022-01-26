@@ -17,7 +17,6 @@ import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.Query;
-import com.google.cloud.firestore.Query.Direction;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteBatch;
 import com.google.cloud.storage.Acl;
@@ -34,80 +33,6 @@ import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
 public abstract class DAO<T> {
-	public class Selection {
-		private final Query query;
-		private String orderBy;
-		private boolean descending;
-		private int offset;
-		private int limit;
-
-		private Selection(Query query) {
-			this.query = query;
-			this.orderBy = null;
-			this.descending = false;
-			this.offset = 0;
-			this.limit = 0;
-		}
-
-		private QuerySnapshot getDocuments() {
-			Query query = this.query;
-			if (orderBy != null) {
-				if (descending) {
-					query = query.orderBy(orderBy, Direction.DESCENDING);
-				} else {
-					query = query.orderBy(orderBy);
-				}
-			}
-			if (offset > 0) {
-				query = query.offset(offset);
-			}
-			if (limit > 0) {
-				query = query.limit(limit);
-			}
-			QuerySnapshot documents;
-			try {
-				documents = query.get().get();
-			} catch (ExecutionException exception) {
-				throw new ExecutionFirestoreException(exception);
-			} catch (InterruptedException exception) {
-				throw new InterruptedFirestoreException(exception);
-			}
-			return documents;
-		}
-
-		public Selection orderBy(String orderBy) {
-			if (orderBy == null) {
-				throw new FormatFirestoreException("Order key cannot be null");
-			}
-			if (orderBy.isBlank()) {
-				throw new FormatFirestoreException("Order key cannot be blank");
-			}
-			this.orderBy = orderBy;
-			return this;
-		}
-
-		public Selection descending() {
-			this.descending = true;
-			return this;
-		}
-
-		public Selection offset(int offset) {
-			if (offset < 1) {
-				throw new FormatFirestoreException("Offset must be positive");
-			}
-			this.offset = offset;
-			return this;
-		}
-
-		public Selection limit(int limit) {
-			if (limit < 1) {
-				throw new FormatFirestoreException("Limit must be positive");
-			}
-			this.limit = limit;
-			return this;
-		}
-	}
-
 	private final String path;
 	private final Class<T> type;
 	private Field field;
@@ -299,21 +224,29 @@ public abstract class DAO<T> {
 	}
 
 	@SuppressWarnings("unchecked")
-	public <S extends DAO<T>> S to(String name) {
+	public <S extends DAO<T>> S using(FirebaseManager manager, String name) {
 		if (name == null) {
-			firebase = Firebase.getInstance();
+			firebase = manager.getInstance();
 		} else {
-			firebase = Firebase.getInstance(name);
+			firebase = manager.getInstance(name);
 		}
 		firebase.checkConnection();
 		refresh();
 		return (S) this;
 	}
 
+	public <S extends DAO<T>> S using(FirebaseManager manager) {
+		return using(manager, null);
+	}
+
+	public <S extends DAO<T>> S using(String name) {
+		return using(Firebase.Manager(), name);
+	}
+
 	@SuppressWarnings("unchecked")
-	public <S extends DAO<T>> S init() {
+	public <S extends DAO<T>> S initialized() {
 		if (firebase == null) {
-			return to(null);
+			return using(Firebase.Manager(), null);
 		} else {
 			firebase.checkExistence();
 			firebase.checkConnection();
@@ -323,88 +256,88 @@ public abstract class DAO<T> {
 	}
 
 	public Selection select() {
-		init();
+		initialized();
 		return new Selection(collection);
 	}
 
 	public Selection select(List<String> keys) {
 		checkRead(keys);
-		init();
+		initialized();
 		return new Selection(collection.whereIn(FieldPath.documentId(), keys));
 	}
 
 	public Selection selectExcept(List<String> keys) {
 		checkRead(keys);
-		init();
+		initialized();
 		return new Selection(collection.whereNotIn(FieldPath.documentId(), keys));
 	}
 
 	public Selection selectWhereIn(String key, List<Object> values) {
 		checkRead(key);
 		checkIn(values);
-		init();
+		initialized();
 		return new Selection(collection.whereIn(key, values));
 	}
 
 	public Selection selectWhereNotIn(String key, List<Object> values) {
 		checkRead(key);
 		checkIn(values);
-		init();
+		initialized();
 		return new Selection(collection.whereNotIn(key, values));
 	}
 
 	public Selection selectWhereEqualTo(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereEqualTo(key, value));
 	}
 
 	public Selection selectWhereNotEqualTo(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereNotEqualTo(key, value));
 	}
 
 	public Selection selectWhereLessThan(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereLessThan(key, value));
 	}
 
 	public Selection selectWhereLessThanOrEqualTo(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereLessThanOrEqualTo(key, value));
 	}
 
 	public Selection selectWhereGreaterThan(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereGreaterThan(key, value));
 	}
 
 	public Selection selectWhereGreaterThanOrEqualTo(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereGreaterThanOrEqualTo(key, value));
 	}
 
 	public Selection selectWhereContains(String key, Object value) {
 		checkRead(key);
-		init();
+		initialized();
 		return new Selection(collection.whereArrayContains(key, value));
 	}
 
 	public Selection selectWhereContainsAny(String key, List<?> values) {
 		checkRead(key);
 		checkIn(values);
-		init();
+		initialized();
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
 
 	public boolean exists(String key) {
 		checkRead(key);
-		init();
+		initialized();
 		DocumentSnapshot document;
 		try {
 			document = collection.document(key).get().get();
@@ -418,7 +351,7 @@ public abstract class DAO<T> {
 
 	public String create(T value) {
 		checkWrite(value);
-		init();
+		initialized();
 		String key;
 		try {
 			DocumentReference document;
@@ -448,7 +381,7 @@ public abstract class DAO<T> {
 
 	public List<String> create(List<T> values) {
 		checkWrite(values);
-		init();
+		initialized();
 		String key;
 		DocumentReference document;
 		WriteBatch batch = firestore.batch();
@@ -498,7 +431,7 @@ public abstract class DAO<T> {
 	public String create(String key, String name, InputStream stream) {
 		checkFile(stream);
 		String blobPath = buildPath(key, name);
-		init();
+		initialized();
 		if (bucket.get(blobPath) != null) {
 			throw new ExistenceStorageException("Path %s already exists".formatted(blobPath));
 		}
@@ -509,7 +442,7 @@ public abstract class DAO<T> {
 
 	public T retrieve(String key, boolean error) {
 		checkRead(key);
-		init();
+		initialized();
 		DocumentSnapshot document;
 		try {
 			document = collection.document(key).get().get();
@@ -543,7 +476,7 @@ public abstract class DAO<T> {
 
 	public String retrieve(String key, String name, boolean error) {
 		String blobPath = buildPath(key, name);
-		init();
+		initialized();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
@@ -563,7 +496,7 @@ public abstract class DAO<T> {
 		checkWrite(value);
 		String key = get(value);
 		checkRead(key);
-		init();
+		initialized();
 		DocumentReference document = collection.document(key);
 		try {
 			if (!document.get().get().exists()) {
@@ -579,7 +512,7 @@ public abstract class DAO<T> {
 
 	public void update(List<T> values) {
 		checkWrite(values);
-		init();
+		initialized();
 		WriteBatch batch = firestore.batch();
 		List<String> keys = new ArrayList<>();
 		for (T value : values) {
@@ -612,7 +545,7 @@ public abstract class DAO<T> {
 	public String update(String key, String name, InputStream stream) {
 		checkFile(stream);
 		String blobPath = buildPath(key, name);
-		init();
+		initialized();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
@@ -631,7 +564,7 @@ public abstract class DAO<T> {
 
 	public void delete(String key, boolean error) {
 		checkRead(key);
-		init();
+		initialized();
 		DocumentReference document = collection.document(key);
 		try {
 			if (!document.get().get().exists()) {
@@ -670,7 +603,7 @@ public abstract class DAO<T> {
 
 	public void delete(String key, String name, boolean error) {
 		String blobPath = buildPath(key, name);
-		init();
+		initialized();
 		Blob blob = bucket.get(blobPath);
 		if (blob == null) {
 			if (error) {
