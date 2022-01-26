@@ -47,7 +47,7 @@ the actual value is obtained from `toString()`.
 In the example below, we assume that the `id` of an user is unique.
 
 ``` java
-public class User extends FirebaseObject {
+public class User {
     @Key
     private int id;
     private String name;
@@ -139,7 +139,7 @@ In the example below, we assume that the `name` of a group is not unique, so it
 cannot be used as the key.
 
 ``` java
-public class Group extends AutokeyFirebaseObject {
+public class Group {
     @Autokey
     private String key;
     private String name;
