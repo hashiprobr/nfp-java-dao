@@ -116,7 +116,7 @@ dao.create(user);
 ```
 
 ``` java
-User user = dao.retrieve("123");
+User user = dao.retrieve(123);
 ```
 
 ``` java
@@ -125,7 +125,7 @@ dao.update(user);
 ```
 
 ``` java
-dao.delete("123");
+dao.delete(123);
 ```
 
 
@@ -206,11 +206,11 @@ All four CRUD methods have a list version.
 
 * `public List<String> create(List<T> values)`
 
-* `public List<T> retrieve(List<String> keys)`
+* `public List<T> retrieve(List<?> keys)`
 
 * `public void update(List<T> values)`
 
-* `public void delete(List<String> keys)`
+* `public void delete(List<?> keys)`
 
 
 File operations
@@ -218,13 +218,13 @@ File operations
 
 All four CRUD methods have a file version.
 
-* `public String create(String key, String name, InputStream stream)`
+* `public String create(Object key, String name, InputStream stream)`
 
-* `public String retrieve(String key, String name)`
+* `public String retrieve(Object key, String name)`
 
-* `public String update(String key, String name, InputStream stream)`
+* `public String update(Object key, String name, InputStream stream)`
 
-* `public void delete(String key, String name)`
+* `public void delete(Object key, String name)`
 
 These methods are supposed to be used for a file that is directly related to a
 storable object. Therefore, the file path is `<collection>/<key>/<name>` and it
@@ -240,21 +240,21 @@ Query operations
 
 The `retrieve` and `delete` methods have a query version.
 
-* `public List<T> retrieve(DAO<T>.Selection selection)`
+* `public List<T> retrieve(Selection selection)`
 
-* `public void delete(DAO<T>.Selection selection)`
+* `public void delete(Selection selection)`
 
 To build a selection, you only need to call a select method from the DAO. This
 method can be chained with the `orderBy`, `descending`, `offset`, and `limit`
 methods for query constraints.
 
 ``` java
-UserDAO.Selection selection = dao.select().orderBy("name").descending();
+Selection selection = dao.select().orderBy("name").descending();
 List<User> users = dao.retrieve(selection);
 ```
 
 ``` java
-GroupDAO.Selection selection = dao.select().offset(10).limit(20);
+Selection selection = dao.select().offset(10).limit(20);
 dao.delete(selection)
 ```
 
@@ -262,14 +262,14 @@ All select methods available are listed below.
 
 * `select()`: all objects.
 
-* `select(List<String> keys)`: objects with keys in the list.
+* `select(List<?> keys)`: objects with keys in the list.
 
-* `selectExcept(List<String> keys)`: objects with keys not in the list.
+* `selectExcept(List<?> keys)`: objects with keys not in the list.
 
-* `selectWhereIn(String name, List<Object> values)`: objects with the value of
+* `selectWhereIn(String name, List<?> values)`: objects with the value of
   field `name` in the list.
 
-* `selectWhereNotIn(String name, List<Object> values)`: objects with the value
+* `selectWhereNotIn(String name, List<?> values)`: objects with the value
   of field `name` not in the list.
 
 * `selectWhereEqualTo(String name, Object value)`: objects with the value of

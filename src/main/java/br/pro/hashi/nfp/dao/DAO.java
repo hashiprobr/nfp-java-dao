@@ -115,18 +115,34 @@ public abstract class DAO<T> {
 		this.bucket = null;
 	}
 
+	private String convert(Object rawKey) {
+		if (rawKey == null) {
+			return null;
+		} else {
+			return rawKey.toString();
+		}
+	}
+
+	private List<String> convert(List<?> rawKeys) {
+		if (rawKeys == null) {
+			return null;
+		} else {
+			List<String> keys = new ArrayList<>();
+			for (Object rawKey : rawKeys) {
+				keys.add(convert(rawKey));
+			}
+			return keys;
+		}
+	}
+
 	private String get(T value) {
-		Object key;
+		Object rawKey;
 		try {
-			key = field.get(value);
+			rawKey = field.get(value);
 		} catch (IllegalAccessException exception) {
 			throw new AccessFirestoreException(exception);
 		}
-		if (key == null) {
-			return null;
-		} else {
-			return key.toString();
-		}
+		return convert(rawKey);
 	}
 
 	private void set(T value, String key) {
@@ -260,26 +276,28 @@ public abstract class DAO<T> {
 		return new Selection(collection);
 	}
 
-	public Selection select(List<String> keys) {
+	public Selection select(List<?> rawKeys) {
+		List<String> keys = convert(rawKeys);
 		checkRead(keys);
 		initialized();
 		return new Selection(collection.whereIn(FieldPath.documentId(), keys));
 	}
 
-	public Selection selectExcept(List<String> keys) {
+	public Selection selectExcept(List<?> rawKeys) {
+		List<String> keys = convert(rawKeys);
 		checkRead(keys);
 		initialized();
 		return new Selection(collection.whereNotIn(FieldPath.documentId(), keys));
 	}
 
-	public Selection selectWhereIn(String key, List<Object> values) {
+	public Selection selectWhereIn(String key, List<?> values) {
 		checkRead(key);
 		checkIn(values);
 		initialized();
 		return new Selection(collection.whereIn(key, values));
 	}
 
-	public Selection selectWhereNotIn(String key, List<Object> values) {
+	public Selection selectWhereNotIn(String key, List<?> values) {
 		checkRead(key);
 		checkIn(values);
 		initialized();
@@ -335,7 +353,8 @@ public abstract class DAO<T> {
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
 
-	public boolean exists(String key) {
+	public boolean exists(Object rawKey) {
+		String key = convert(rawKey);
 		checkRead(key);
 		initialized();
 		DocumentSnapshot document;
@@ -347,6 +366,14 @@ public abstract class DAO<T> {
 			throw new InterruptedFirestoreException(exception);
 		}
 		return document.exists();
+	}
+
+	public boolean exists(Object rawKey, String name) {
+		String key = convert(rawKey);
+		String blobPath = buildPath(key, name);
+		initialized();
+		Blob blob = bucket.get(blobPath);
+		return blob != null;
 	}
 
 	public String create(T value) {
@@ -428,8 +455,9 @@ public abstract class DAO<T> {
 		return keys;
 	}
 
-	public String create(String key, String name, InputStream stream) {
+	public String create(Object rawKey, String name, InputStream stream) {
 		checkFile(stream);
+		String key = convert(rawKey);
 		String blobPath = buildPath(key, name);
 		initialized();
 		if (bucket.get(blobPath) != null) {
@@ -440,7 +468,8 @@ public abstract class DAO<T> {
 		return blob.getMediaLink();
 	}
 
-	public T retrieve(String key, boolean error) {
+	public T retrieve(Object rawKey, boolean error) {
+		String key = convert(rawKey);
 		checkRead(key);
 		initialized();
 		DocumentSnapshot document;
@@ -461,8 +490,8 @@ public abstract class DAO<T> {
 		return document.toObject(type);
 	}
 
-	public T retrieve(String key) {
-		return retrieve(key, true);
+	public T retrieve(Object rawKey) {
+		return retrieve(rawKey, true);
 	}
 
 	public List<T> retrieve(Selection selection) {
@@ -474,7 +503,8 @@ public abstract class DAO<T> {
 		return values;
 	}
 
-	public String retrieve(String key, String name, boolean error) {
+	public String retrieve(Object rawKey, String name, boolean error) {
+		String key = convert(rawKey);
 		String blobPath = buildPath(key, name);
 		initialized();
 		Blob blob = bucket.get(blobPath);
@@ -488,8 +518,8 @@ public abstract class DAO<T> {
 		return blob.getMediaLink();
 	}
 
-	public String retrieve(String key, String name) {
-		return retrieve(key, name, true);
+	public String retrieve(Object rawKey, String name) {
+		return retrieve(rawKey, name, true);
 	}
 
 	public void update(T value) {
@@ -542,8 +572,9 @@ public abstract class DAO<T> {
 		}
 	}
 
-	public String update(String key, String name, InputStream stream) {
+	public String update(Object rawKey, String name, InputStream stream) {
 		checkFile(stream);
+		String key = convert(rawKey);
 		String blobPath = buildPath(key, name);
 		initialized();
 		Blob blob = bucket.get(blobPath);
@@ -562,7 +593,8 @@ public abstract class DAO<T> {
 		return blob.getMediaLink();
 	}
 
-	public void delete(String key, boolean error) {
+	public void delete(Object rawKey, boolean error) {
+		String key = convert(rawKey);
 		checkRead(key);
 		initialized();
 		DocumentReference document = collection.document(key);
@@ -582,8 +614,8 @@ public abstract class DAO<T> {
 		}
 	}
 
-	public void delete(String key) {
-		delete(key, true);
+	public void delete(Object rawKey) {
+		delete(rawKey, true);
 	}
 
 	public void delete(Selection selection) {
@@ -601,7 +633,8 @@ public abstract class DAO<T> {
 		}
 	}
 
-	public void delete(String key, String name, boolean error) {
+	public void delete(Object rawKey, String name, boolean error) {
+		String key = convert(rawKey);
 		String blobPath = buildPath(key, name);
 		initialized();
 		Blob blob = bucket.get(blobPath);
@@ -615,7 +648,7 @@ public abstract class DAO<T> {
 		blob.delete();
 	}
 
-	public void delete(String key, String name) {
-		delete(key, name, true);
+	public void delete(Object rawKey, String name) {
+		delete(rawKey, name, true);
 	}
 }
