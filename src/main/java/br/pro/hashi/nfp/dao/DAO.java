@@ -519,7 +519,35 @@ public abstract class DAO<T> {
 	}
 
 	public String retrieve(Object rawKey, String name) {
-		return retrieve(rawKey, name, true);
+		return retrieve(rawKey, name, false);
+	}
+
+	public List<String> retrieve(List<?> rawKeys, String name, boolean error) {
+		List<String> blobPaths = new ArrayList<>();
+		for (Object rawKey : rawKeys) {
+			String key = convert(rawKey);
+			blobPaths.add(buildPath(key, name));
+		}
+		initialized();
+		List<String> urls = new ArrayList<>();
+		int i = 0;
+		for (Blob blob : bucket.get(blobPaths)) {
+			if (blob == null) {
+				if (error) {
+					throw new ExistenceStorageException("Path %s does not exist".formatted(blobPaths.get(i)));
+				} else {
+					urls.add(null);
+				}
+			} else {
+				urls.add(blob.getMediaLink());
+			}
+			i++;
+		}
+		return urls;
+	}
+
+	public List<String> retrieve(List<?> rawKeys, String name) {
+		return retrieve(rawKeys, name, false);
 	}
 
 	public void update(T value) {
@@ -649,6 +677,34 @@ public abstract class DAO<T> {
 	}
 
 	public void delete(Object rawKey, String name) {
-		delete(rawKey, name, true);
+		delete(rawKey, name, false);
+	}
+
+	public void delete(List<?> rawKeys, String name, boolean error) {
+		List<String> blobPaths = new ArrayList<>();
+		for (Object rawKey : rawKeys) {
+			String key = convert(rawKey);
+			blobPaths.add(buildPath(key, name));
+		}
+		initialized();
+		List<Blob> blobs = new ArrayList<>();
+		int i = 0;
+		for (Blob blob : bucket.get(blobPaths)) {
+			if (blob == null) {
+				if (error) {
+					throw new ExistenceStorageException("Path %s does not exist".formatted(blobPaths.get(i)));
+				}
+			} else {
+				blobs.add(blob);
+			}
+			i++;
+		}
+		for (Blob blob : blobs) {
+			blob.delete();
+		}
+	}
+
+	public void delete(List<?> rawKeys, String name) {
+		delete(rawKeys, name, false);
 	}
 }
