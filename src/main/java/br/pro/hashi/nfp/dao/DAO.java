@@ -7,7 +7,9 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 import com.google.cloud.WriteChannel;
@@ -16,8 +18,6 @@ import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Firestore;
-import com.google.cloud.firestore.Query;
-import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteBatch;
 import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
@@ -35,8 +35,9 @@ import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 public abstract class DAO<T> {
 	private final String path;
 	private final Class<T> type;
-	private Field field;
+	private Field keyField;
 	private boolean auto;
+	private Map<String, Field> fileFields;
 	private Firebase firebase;
 	private Firestore firestore;
 	private CollectionReference collection;
@@ -67,16 +68,17 @@ public abstract class DAO<T> {
 			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(className));
 		}
 
-		this.field = null;
+		this.keyField = null;
 		this.auto = false;
+		this.fileFields = new HashMap<>();
 		for (Field field : this.type.getDeclaredFields()) {
 			String fieldName = field.getName();
 			if (field.isAnnotationPresent(Key.class)) {
 				if (field.isAnnotationPresent(Autokey.class)) {
 					throw new FormatFirestoreException("Field %s of class %s cannot be both a key and an autokey".formatted(fieldName, className));
 				} else {
-					if (this.field == null) {
-						this.field = field;
+					if (this.keyField == null) {
+						this.keyField = field;
 					} else {
 						if (this.auto) {
 							throw new FormatFirestoreException("Class %s cannot have both an autokey and a key".formatted(className));
@@ -87,11 +89,11 @@ public abstract class DAO<T> {
 				}
 			} else {
 				if (field.isAnnotationPresent(Autokey.class)) {
-					if (this.field == null) {
+					if (this.keyField == null) {
 						if (field.getType() != String.class) {
 							throw new FormatFirestoreException("Autokey %s of class %s must be a string".formatted(fieldName, className));
 						}
-						this.field = field;
+						this.keyField = field;
 						this.auto = true;
 					} else {
 						if (this.auto) {
@@ -102,12 +104,19 @@ public abstract class DAO<T> {
 					}
 				}
 			}
+			if (field.isAnnotationPresent(File.class)) {
+				if (field.getType() != String.class) {
+					throw new FormatFirestoreException("File %s of class %s must be a string".formatted(fieldName, className));
+				}
+				field.setAccessible(true);
+				this.fileFields.put(fieldName, field);
+			}
 		}
 
-		if (this.field == null) {
+		if (this.keyField == null) {
 			throw new FormatFirestoreException("Class %s must have either a key or an autokey".formatted(className));
 		}
-		this.field.setAccessible(true);
+		this.keyField.setAccessible(true);
 
 		this.firebase = null;
 		this.firestore = null;
@@ -135,7 +144,7 @@ public abstract class DAO<T> {
 		}
 	}
 
-	private String get(T value) {
+	private String get(Field field, T value) {
 		Object rawKey;
 		try {
 			rawKey = field.get(value);
@@ -145,7 +154,7 @@ public abstract class DAO<T> {
 		return convert(rawKey);
 	}
 
-	private void set(T value, String key) {
+	private void set(Field field, T value, String key) {
 		try {
 			field.set(value, key);
 		} catch (IllegalAccessException exception) {
@@ -192,18 +201,6 @@ public abstract class DAO<T> {
 		}
 	}
 
-	private void checkWrite(List<T> values) {
-		if (values == null) {
-			throw new FormatFirestoreException("List of values cannot be null");
-		}
-		if (values.isEmpty()) {
-			throw new FormatFirestoreException("List of values cannot be empty");
-		}
-		for (T value : values) {
-			checkWrite(value);
-		}
-	}
-
 	private void checkIn(List<?> values) {
 		if (values == null) {
 			throw new FormatFirestoreException("List of values cannot be null");
@@ -219,6 +216,12 @@ public abstract class DAO<T> {
 		}
 	}
 
+	private void checkFile(String name) {
+		if (!fileFields.containsKey(name)) {
+			throw new FormatStorageException("File %s does not exist".formatted(name));
+		}
+	}
+
 	private void checkFile(InputStream stream) {
 		if (stream == null) {
 			throw new FormatStorageException("Stream cannot be null");
@@ -226,17 +229,75 @@ public abstract class DAO<T> {
 	}
 
 	private String buildPath(String key, String name) {
-		checkRead(key);
-		if (name == null) {
-			throw new FormatStorageException("Name cannot be null");
-		}
-		if (name.isBlank()) {
-			throw new FormatStorageException("Name cannot be blank");
-		}
-		if (name.indexOf('/') != -1) {
-			throw new FormatStorageException("Name cannot have slashes");
-		}
 		return "%s/%s/%s".formatted(path, key, name);
+	}
+
+	private DocumentReference preCreate(T value) {
+		checkWrite(value);
+		initialized();
+		String key;
+		DocumentReference document;
+		if (auto) {
+			if (get(keyField, value) != null) {
+				throw new FormatFirestoreException("Key must be null");
+			}
+			document = collection.document();
+			key = document.getId();
+			set(keyField, value, key);
+		} else {
+			key = get(keyField, value);
+			checkRead(key);
+			document = collection.document(key);
+			try {
+				if (document.get().get().exists()) {
+					throw new ExistenceFirestoreException("Key %s already exists".formatted(key));
+				}
+			} catch (ExecutionException exception) {
+				throw new ExecutionFirestoreException(exception);
+			} catch (InterruptedException exception) {
+				throw new InterruptedFirestoreException(exception);
+			}
+		}
+		return document;
+	}
+
+	private String postCreate(DocumentReference document, T value) {
+		try {
+			document.set(value).get();
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+		return document.getId();
+	}
+
+	private DocumentReference preUpdate(T value) {
+		checkWrite(value);
+		String key = get(keyField, value);
+		checkRead(key);
+		initialized();
+		DocumentReference document = collection.document(key);
+		try {
+			if (!document.get().get().exists()) {
+				throw new ExistenceFirestoreException("Key %s does not exist".formatted(key));
+			}
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+		return document;
+	}
+
+	private void postUpdate(DocumentReference document, T value) {
+		try {
+			document.set(value).get();
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
 	}
 
 	@SuppressWarnings("unchecked")
@@ -353,122 +414,38 @@ public abstract class DAO<T> {
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
 
-	public boolean exists(Object rawKey) {
-		String key = convert(rawKey);
-		checkRead(key);
-		initialized();
-		DocumentSnapshot document;
-		try {
-			document = collection.document(key).get().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
+	public String create(T value, Map<String, InputStream> streams) {
+		DocumentReference document = preCreate(value);
+		String key = document.getId();
+		InputStream stream;
+		String blobPath;
+		for (String name : streams.keySet()) {
+			checkFile(name);
+			stream = streams.get(name);
+			checkFile(stream);
+			blobPath = buildPath(key, name);
+			if (bucket.get(blobPath) != null) {
+				throw new ExistenceStorageException("Path %s already exists".formatted(blobPath));
+			}
 		}
-		return document.exists();
-	}
-
-	public boolean exists(Object rawKey, String name) {
-		String key = convert(rawKey);
-		String blobPath = buildPath(key, name);
-		initialized();
-		Blob blob = bucket.get(blobPath);
-		return blob != null;
+		for (String name : streams.keySet()) {
+			Field field = fileFields.get(name);
+			stream = streams.get(name);
+			blobPath = buildPath(key, name);
+			Blob blob = bucket.create(blobPath, stream);
+			blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
+			String url = blob.getMediaLink();
+			set(field, value, url);
+		}
+		return postCreate(document, value);
 	}
 
 	public String create(T value) {
-		checkWrite(value);
-		initialized();
-		String key;
-		try {
-			DocumentReference document;
-			if (auto) {
-				if (get(value) != null) {
-					throw new FormatFirestoreException("Key must be null");
-				}
-				document = collection.document();
-				key = document.getId();
-				set(value, key);
-			} else {
-				key = get(value);
-				checkRead(key);
-				document = collection.document(key);
-				if (document.get().get().exists()) {
-					throw new ExistenceFirestoreException("Key %s already exists".formatted(key));
-				}
-			}
-			document.set(value).get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-		return key;
+		DocumentReference document = preCreate(value);
+		return postCreate(document, value);
 	}
 
-	public List<String> create(List<T> values) {
-		checkWrite(values);
-		initialized();
-		String key;
-		DocumentReference document;
-		WriteBatch batch = firestore.batch();
-		List<String> keys = new ArrayList<>();
-		if (auto) {
-			for (T value : values) {
-				if (get(value) != null) {
-					throw new FormatFirestoreException("All keys must be null");
-				}
-				document = collection.document();
-				key = document.getId();
-				set(value, key);
-				batch.set(document, value);
-				keys.add(key);
-			}
-		} else {
-			for (T value : values) {
-				key = get(value);
-				checkRead(key);
-				document = collection.document(key);
-				batch.set(document, value);
-				keys.add(key);
-			}
-			Query query = collection.whereIn(FieldPath.documentId(), keys);
-			QuerySnapshot documents;
-			try {
-				documents = query.get().get();
-			} catch (ExecutionException exception) {
-				throw new ExecutionFirestoreException(exception);
-			} catch (InterruptedException exception) {
-				throw new InterruptedFirestoreException(exception);
-			}
-			if (documents.size() > 0) {
-				throw new ExistenceFirestoreException("Some keys already exist");
-			}
-		}
-		try {
-			batch.commit().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-		return keys;
-	}
-
-	public String create(Object rawKey, String name, InputStream stream) {
-		checkFile(stream);
-		String key = convert(rawKey);
-		String blobPath = buildPath(key, name);
-		initialized();
-		if (bucket.get(blobPath) != null) {
-			throw new ExistenceStorageException("Path %s already exists".formatted(blobPath));
-		}
-		Blob blob = bucket.create(blobPath, stream);
-		blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
-		return blob.getMediaLink();
-	}
-
-	public T retrieve(Object rawKey, boolean error) {
+	public T retrieve(Object rawKey) {
 		String key = convert(rawKey);
 		checkRead(key);
 		initialized();
@@ -480,18 +457,11 @@ public abstract class DAO<T> {
 		} catch (InterruptedException exception) {
 			throw new InterruptedFirestoreException(exception);
 		}
-		if (!document.exists()) {
-			if (error) {
-				throw new ExistenceFirestoreException("Key %s does not exist".formatted(key));
-			} else {
-				return null;
-			}
+		if (document.exists()) {
+			return document.toObject(type);
+		} else {
+			return null;
 		}
-		return document.toObject(type);
-	}
-
-	public T retrieve(Object rawKey) {
-		return retrieve(rawKey, true);
 	}
 
 	public List<T> retrieve(Selection selection) {
@@ -503,154 +473,89 @@ public abstract class DAO<T> {
 		return values;
 	}
 
-	public String retrieve(Object rawKey, String name, boolean error) {
-		String key = convert(rawKey);
-		String blobPath = buildPath(key, name);
-		initialized();
-		Blob blob = bucket.get(blobPath);
-		if (blob == null) {
-			if (error) {
+	public void update(T value, Map<String, InputStream> streams) {
+		DocumentReference document = preUpdate(value);
+		String key = document.getId();
+		InputStream stream;
+		String blobPath;
+		Field field;
+		for (String name : streams.keySet()) {
+			checkFile(name);
+			stream = streams.get(name);
+			checkFile(stream);
+			blobPath = buildPath(key, name);
+			if (bucket.get(blobPath) == null) {
 				throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
-			} else {
-				return null;
 			}
 		}
-		return blob.getMediaLink();
-	}
-
-	public String retrieve(Object rawKey, String name) {
-		return retrieve(rawKey, name, false);
-	}
-
-	public List<String> retrieve(List<?> rawKeys, String name, boolean error) {
+		for (String name : streams.keySet()) {
+			field = fileFields.get(name);
+			stream = streams.get(name);
+			blobPath = buildPath(key, name);
+			WriteChannel writer = bucket.get(blobPath).writer();
+			try {
+				ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
+				writer.write(source);
+				writer.close();
+			} catch (IOException exception) {
+				throw new IOFirebaseException(exception);
+			}
+			String url = bucket.get(blobPath).getMediaLink();
+			set(field, value, url);
+		}
 		List<String> blobPaths = new ArrayList<>();
-		for (Object rawKey : rawKeys) {
-			String key = convert(rawKey);
-			blobPaths.add(buildPath(key, name));
-		}
-		initialized();
-		List<String> urls = new ArrayList<>();
-		int i = 0;
-		for (Blob blob : bucket.get(blobPaths)) {
-			if (blob == null) {
-				if (error) {
-					throw new ExistenceStorageException("Path %s does not exist".formatted(blobPaths.get(i)));
-				} else {
-					urls.add(null);
-				}
-			} else {
-				urls.add(blob.getMediaLink());
+		for (String name : fileFields.keySet()) {
+			field = fileFields.get(name);
+			String url = get(field, value);
+			if (url == null) {
+				blobPaths.add(buildPath(key, name));
 			}
-			i++;
 		}
-		return urls;
-	}
-
-	public List<String> retrieve(List<?> rawKeys, String name) {
-		return retrieve(rawKeys, name, false);
+		for (Blob blob : bucket.get(blobPaths)) {
+			if (blob != null) {
+				blob.delete();
+			}
+		}
+		postUpdate(document, value);
 	}
 
 	public void update(T value) {
-		checkWrite(value);
-		String key = get(value);
-		checkRead(key);
-		initialized();
-		DocumentReference document = collection.document(key);
-		try {
-			if (!document.get().get().exists()) {
-				throw new ExistenceFirestoreException("Key %s does not exist".formatted(key));
-			}
-			document.set(value).get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-	}
-
-	public void update(List<T> values) {
-		checkWrite(values);
-		initialized();
-		WriteBatch batch = firestore.batch();
-		List<String> keys = new ArrayList<>();
-		for (T value : values) {
-			String key = get(value);
-			checkRead(key);
-			batch.set(collection.document(key), value);
-			keys.add(key);
-		}
-		Query query = collection.whereIn(FieldPath.documentId(), keys);
-		QuerySnapshot documents;
-		try {
-			documents = query.get().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-		if (documents.size() < values.size()) {
-			throw new ExistenceFirestoreException("Some keys do not exist");
-		}
-		try {
-			batch.commit().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-	}
-
-	public String update(Object rawKey, String name, InputStream stream) {
-		checkFile(stream);
-		String key = convert(rawKey);
-		String blobPath = buildPath(key, name);
-		initialized();
-		Blob blob = bucket.get(blobPath);
-		if (blob == null) {
-			throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
-		}
-		WriteChannel writer = blob.writer();
-		try {
-			ByteBuffer src = ByteBuffer.wrap(stream.readAllBytes());
-			writer.write(src);
-			writer.close();
-		} catch (IOException exception) {
-			throw new IOFirebaseException(exception);
-		}
-		blob = bucket.get(blobPath);
-		return blob.getMediaLink();
-	}
-
-	public void delete(Object rawKey, boolean error) {
-		String key = convert(rawKey);
-		checkRead(key);
-		initialized();
-		DocumentReference document = collection.document(key);
-		try {
-			if (!document.get().get().exists()) {
-				if (error) {
-					throw new ExistenceFirestoreException("Key %s does not exist".formatted(key));
-				} else {
-					return;
-				}
-			}
-			document.delete().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
+		DocumentReference document = preUpdate(value);
+		postUpdate(document, value);
 	}
 
 	public void delete(Object rawKey) {
-		delete(rawKey, true);
+		String key = convert(rawKey);
+		checkRead(key);
+		initialized();
+		try {
+			collection.document(key).delete().get();
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+		List<String> blobPaths = new ArrayList<>();
+		for (String name : fileFields.keySet()) {
+			blobPaths.add(buildPath(key, name));
+		}
+		for (Blob blob : bucket.get(blobPaths)) {
+			if (blob != null) {
+				blob.delete();
+			}
+		}
 	}
 
 	public void delete(Selection selection) {
 		checkQuery(selection);
 		WriteBatch batch = firestore.batch();
+		List<String> blobPaths = new ArrayList<>();
 		for (DocumentSnapshot document : selection.getDocuments()) {
 			batch.delete(document.getReference());
+			String key = document.getId();
+			for (String name : fileFields.keySet()) {
+				blobPaths.add(buildPath(key, name));
+			}
 		}
 		try {
 			batch.commit().get();
@@ -659,52 +564,10 @@ public abstract class DAO<T> {
 		} catch (InterruptedException exception) {
 			throw new InterruptedFirestoreException(exception);
 		}
-	}
-
-	public void delete(Object rawKey, String name, boolean error) {
-		String key = convert(rawKey);
-		String blobPath = buildPath(key, name);
-		initialized();
-		Blob blob = bucket.get(blobPath);
-		if (blob == null) {
-			if (error) {
-				throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
-			} else {
-				return;
-			}
-		}
-		blob.delete();
-	}
-
-	public void delete(Object rawKey, String name) {
-		delete(rawKey, name, false);
-	}
-
-	public void delete(List<?> rawKeys, String name, boolean error) {
-		List<String> blobPaths = new ArrayList<>();
-		for (Object rawKey : rawKeys) {
-			String key = convert(rawKey);
-			blobPaths.add(buildPath(key, name));
-		}
-		initialized();
-		List<Blob> blobs = new ArrayList<>();
-		int i = 0;
 		for (Blob blob : bucket.get(blobPaths)) {
-			if (blob == null) {
-				if (error) {
-					throw new ExistenceStorageException("Path %s does not exist".formatted(blobPaths.get(i)));
-				}
-			} else {
-				blobs.add(blob);
+			if (blob != null) {
+				blob.delete();
 			}
-			i++;
 		}
-		for (Blob blob : blobs) {
-			blob.delete();
-		}
-	}
-
-	public void delete(List<?> rawKeys, String name) {
-		delete(rawKeys, name, false);
 	}
 }
