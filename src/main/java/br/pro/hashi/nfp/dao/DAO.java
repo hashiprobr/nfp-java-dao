@@ -511,9 +511,11 @@ public abstract class DAO<T> {
 				blobPaths.add(buildPath(key, name));
 			}
 		}
-		for (Blob blob : bucket.get(blobPaths)) {
-			if (blob != null) {
-				blob.delete();
+		if (!blobPaths.isEmpty()) {
+			for (Blob blob : bucket.get(blobPaths)) {
+				if (blob != null) {
+					blob.delete();
+				}
 			}
 		}
 		postUpdate(document, value);
@@ -539,9 +541,11 @@ public abstract class DAO<T> {
 		for (String name : fileFields.keySet()) {
 			blobPaths.add(buildPath(key, name));
 		}
-		for (Blob blob : bucket.get(blobPaths)) {
-			if (blob != null) {
-				blob.delete();
+		if (!blobPaths.isEmpty()) {
+			for (Blob blob : bucket.get(blobPaths)) {
+				if (blob != null) {
+					blob.delete();
+				}
 			}
 		}
 	}
@@ -564,9 +568,11 @@ public abstract class DAO<T> {
 		} catch (InterruptedException exception) {
 			throw new InterruptedFirestoreException(exception);
 		}
-		for (Blob blob : bucket.get(blobPaths)) {
-			if (blob != null) {
-				blob.delete();
+		if (!blobPaths.isEmpty()) {
+			for (Blob blob : bucket.get(blobPaths)) {
+				if (blob != null) {
+					blob.delete();
+				}
 			}
 		}
 	}
