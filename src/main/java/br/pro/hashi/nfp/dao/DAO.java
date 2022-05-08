@@ -216,9 +216,13 @@ public abstract class DAO<T> {
 		}
 	}
 
-	private void checkFile(String name) {
-		if (!fileFields.containsKey(name)) {
+	private void checkFile(T value, String name) {
+		Field field = fileFields.get(name);
+		if (field == null) {
 			throw new FormatStorageException("File %s does not exist".formatted(name));
+		}
+		if (get(field, value) != null) {
+			throw new FormatStorageException("File %s must be null".formatted(name));
 		}
 	}
 
@@ -261,17 +265,6 @@ public abstract class DAO<T> {
 		return document;
 	}
 
-	private String postCreate(DocumentReference document, T value) {
-		try {
-			document.set(value).get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-		return document.getId();
-	}
-
 	private DocumentReference preUpdate(T value) {
 		checkWrite(value);
 		String key = get(keyField, value);
@@ -290,7 +283,7 @@ public abstract class DAO<T> {
 		return document;
 	}
 
-	private void postUpdate(DocumentReference document, T value) {
+	private void postCreateOrUpdate(DocumentReference document, T value) {
 		try {
 			document.set(value).get();
 		} catch (ExecutionException exception) {
@@ -414,13 +407,13 @@ public abstract class DAO<T> {
 		return new Selection(collection.whereArrayContainsAny(key, values));
 	}
 
-	public String create(T value, Map<String, InputStream> streams) {
+	public void create(T value, Map<String, InputStream> streams) {
 		DocumentReference document = preCreate(value);
 		String key = document.getId();
 		InputStream stream;
 		String blobPath;
 		for (String name : streams.keySet()) {
-			checkFile(name);
+			checkFile(value, name);
 			stream = streams.get(name);
 			checkFile(stream);
 			blobPath = buildPath(key, name);
@@ -437,12 +430,12 @@ public abstract class DAO<T> {
 			String url = blob.getMediaLink();
 			set(field, value, url);
 		}
-		return postCreate(document, value);
+		postCreateOrUpdate(document, value);
 	}
 
-	public String create(T value) {
+	public void create(T value) {
 		DocumentReference document = preCreate(value);
-		return postCreate(document, value);
+		postCreateOrUpdate(document, value);
 	}
 
 	public T retrieve(Object rawKey) {
@@ -480,7 +473,7 @@ public abstract class DAO<T> {
 		String blobPath;
 		Field field;
 		for (String name : streams.keySet()) {
-			checkFile(name);
+			checkFile(value, name);
 			stream = streams.get(name);
 			checkFile(stream);
 			blobPath = buildPath(key, name);
@@ -518,12 +511,12 @@ public abstract class DAO<T> {
 				}
 			}
 		}
-		postUpdate(document, value);
+		postCreateOrUpdate(document, value);
 	}
 
 	public void update(T value) {
 		DocumentReference document = preUpdate(value);
-		postUpdate(document, value);
+		postCreateOrUpdate(document, value);
 	}
 
 	public void delete(Object rawKey) {
