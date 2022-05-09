@@ -470,30 +470,32 @@ public abstract class DAO<T> {
 		DocumentReference document = preUpdate(value);
 		String key = document.getId();
 		InputStream stream;
-		String blobPath;
 		Field field;
 		for (String name : streams.keySet()) {
 			checkFile(value, name);
 			stream = streams.get(name);
 			checkFile(stream);
-			blobPath = buildPath(key, name);
-			if (bucket.get(blobPath) == null) {
-				throw new ExistenceStorageException("Path %s does not exist".formatted(blobPath));
-			}
 		}
 		for (String name : streams.keySet()) {
 			field = fileFields.get(name);
 			stream = streams.get(name);
-			blobPath = buildPath(key, name);
-			WriteChannel writer = bucket.get(blobPath).writer();
-			try {
-				ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
-				writer.write(source);
-				writer.close();
-			} catch (IOException exception) {
-				throw new IOFirebaseException(exception);
+			String blobPath = buildPath(key, name);
+			Blob blob = bucket.get(blobPath);
+			if (blob == null) {
+				blob = bucket.create(blobPath, stream);
+				blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
+			} else {
+				WriteChannel writer = blob.writer();
+				try {
+					ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
+					writer.write(source);
+					writer.close();
+				} catch (IOException exception) {
+					throw new IOFirebaseException(exception);
+				}
+				blob = bucket.get(blobPath);
 			}
-			String url = bucket.get(blobPath).getMediaLink();
+			String url = blob.getMediaLink();
 			set(field, value, url);
 		}
 		List<String> blobPaths = new ArrayList<>();
