@@ -11,35 +11,13 @@ import br.pro.hashi.nfp.dao.exception.FormatFirestoreException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
 public class Selection {
-	private final Query query;
-	private String orderBy;
-	private boolean descending;
-	private int offset;
-	private int limit;
+	private Query query;
 
 	Selection(Query query) {
 		this.query = query;
-		this.orderBy = null;
-		this.descending = false;
-		this.offset = 0;
-		this.limit = 0;
 	}
 
 	QuerySnapshot getDocuments() {
-		Query query = this.query;
-		if (orderBy != null) {
-			if (descending) {
-				query = query.orderBy(orderBy, Direction.DESCENDING);
-			} else {
-				query = query.orderBy(orderBy);
-			}
-		}
-		if (offset > 0) {
-			query = query.offset(offset);
-		}
-		if (limit > 0) {
-			query = query.limit(limit);
-		}
 		QuerySnapshot documents;
 		try {
 			documents = query.get().get();
@@ -51,27 +29,30 @@ public class Selection {
 		return documents;
 	}
 
-	public Selection orderBy(String orderBy) {
+	public Selection orderBy(String orderBy, boolean descending) {
 		if (orderBy == null) {
-			throw new FormatFirestoreException("Order key cannot be null");
+			throw new FormatFirestoreException("Order by cannot be null");
 		}
 		if (orderBy.isBlank()) {
-			throw new FormatFirestoreException("Order key cannot be blank");
+			throw new FormatFirestoreException("Order by cannot be blank");
 		}
-		this.orderBy = orderBy;
+		if (descending) {
+			query = query.orderBy(orderBy, Direction.DESCENDING);
+		} else {
+			query = query.orderBy(orderBy, Direction.ASCENDING);
+		}
 		return this;
 	}
 
-	public Selection descending() {
-		this.descending = true;
-		return this;
+	public Selection orderBy(String key) {
+		return orderBy(key, false);
 	}
 
 	public Selection offset(int offset) {
 		if (offset < 1) {
 			throw new FormatFirestoreException("Offset must be positive");
 		}
-		this.offset = offset;
+		query = query.offset(offset);
 		return this;
 	}
 
@@ -79,7 +60,15 @@ public class Selection {
 		if (limit < 1) {
 			throw new FormatFirestoreException("Limit must be positive");
 		}
-		this.limit = limit;
+		query = query.limit(limit);
+		return this;
+	}
+
+	public Selection limitToLast(int limit) {
+		if (limit < 1) {
+			throw new FormatFirestoreException("Limit to last must be positive");
+		}
+		query = query.limitToLast(limit);
 		return this;
 	}
 }
