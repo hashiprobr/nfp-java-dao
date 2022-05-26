@@ -33,6 +33,59 @@ import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
 public abstract class DAO<T> {
+	private static String convert(Object rawKey) {
+		if (rawKey == null) {
+			return null;
+		} else {
+			return rawKey.toString();
+		}
+	}
+
+	static List<String> convert(List<?> rawKeys) {
+		if (rawKeys == null) {
+			return null;
+		} else {
+			List<String> keys = new ArrayList<>();
+			for (Object rawKey : rawKeys) {
+				keys.add(convert(rawKey));
+			}
+			return keys;
+		}
+	}
+
+	static void checkRead(String key) {
+		if (key == null) {
+			throw new FormatFirestoreException("Key cannot be null");
+		}
+		if (key.isBlank()) {
+			throw new FormatFirestoreException("Key cannot be blank");
+		}
+		if (key.indexOf('/') != -1) {
+			throw new FormatFirestoreException("Key cannot have slashes");
+		}
+	}
+
+	static void checkRead(List<String> keys) {
+		if (keys == null) {
+			throw new FormatFirestoreException("List of keys cannot be null");
+		}
+		if (keys.isEmpty()) {
+			throw new FormatFirestoreException("List of keys cannot be empty");
+		}
+		for (String key : keys) {
+			checkRead(key);
+		}
+	}
+
+	static void checkIn(List<?> values) {
+		if (values == null) {
+			throw new FormatFirestoreException("List of values cannot be null");
+		}
+		if (values.isEmpty()) {
+			throw new FormatFirestoreException("List of values cannot be empty");
+		}
+	}
+
 	private final String path;
 	private final Class<T> type;
 	private Field keyField;
@@ -124,26 +177,6 @@ public abstract class DAO<T> {
 		this.bucket = null;
 	}
 
-	private String convert(Object rawKey) {
-		if (rawKey == null) {
-			return null;
-		} else {
-			return rawKey.toString();
-		}
-	}
-
-	private List<String> convert(List<?> rawKeys) {
-		if (rawKeys == null) {
-			return null;
-		} else {
-			List<String> keys = new ArrayList<>();
-			for (Object rawKey : rawKeys) {
-				keys.add(convert(rawKey));
-			}
-			return keys;
-		}
-	}
-
 	private String get(Field field, T value) {
 		Object rawKey;
 		try {
@@ -171,42 +204,9 @@ public abstract class DAO<T> {
 		bucket = firebase.getBucket();
 	}
 
-	private void checkRead(String key) {
-		if (key == null) {
-			throw new FormatFirestoreException("Key cannot be null");
-		}
-		if (key.isBlank()) {
-			throw new FormatFirestoreException("Key cannot be blank");
-		}
-		if (key.indexOf('/') != -1) {
-			throw new FormatFirestoreException("Key cannot have slashes");
-		}
-	}
-
-	private void checkRead(List<String> keys) {
-		if (keys == null) {
-			throw new FormatFirestoreException("List of keys cannot be null");
-		}
-		if (keys.isEmpty()) {
-			throw new FormatFirestoreException("List of keys cannot be empty");
-		}
-		for (String key : keys) {
-			checkRead(key);
-		}
-	}
-
 	private void checkWrite(T value) {
 		if (value == null) {
 			throw new FormatFirestoreException("Value cannot be null");
-		}
-	}
-
-	private void checkIn(List<?> values) {
-		if (values == null) {
-			throw new FormatFirestoreException("List of values cannot be null");
-		}
-		if (values.isEmpty()) {
-			throw new FormatFirestoreException("List of values cannot be empty");
 		}
 	}
 

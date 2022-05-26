@@ -1,7 +1,9 @@
 package br.pro.hashi.nfp.dao;
 
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Query;
 import com.google.cloud.firestore.Query.Direction;
 import com.google.cloud.firestore.QuerySnapshot;
@@ -27,6 +29,83 @@ public class Selection {
 			throw new InterruptedFirestoreException(exception);
 		}
 		return documents;
+	}
+
+	public Selection select(List<?> rawKeys) {
+		List<String> keys = DAO.convert(rawKeys);
+		DAO.checkRead(keys);
+		query = query.whereIn(FieldPath.documentId(), keys);
+		return this;
+	}
+
+	public Selection selectExcept(List<?> rawKeys) {
+		List<String> keys = DAO.convert(rawKeys);
+		DAO.checkRead(keys);
+		query = query.whereNotIn(FieldPath.documentId(), keys);
+		return this;
+	}
+
+	public Selection selectWhereIn(String key, List<?> values) {
+		DAO.checkRead(key);
+		DAO.checkIn(values);
+		query = query.whereIn(key, values);
+		return this;
+	}
+
+	public Selection selectWhereNotIn(String key, List<?> values) {
+		DAO.checkRead(key);
+		DAO.checkIn(values);
+		query = query.whereNotIn(key, values);
+		return this;
+	}
+
+	public Selection selectWhereEqualTo(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereEqualTo(key, value);
+		return this;
+	}
+
+	public Selection selectWhereNotEqualTo(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereNotEqualTo(key, value);
+		return this;
+	}
+
+	public Selection selectWhereLessThan(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereLessThan(key, value);
+		return this;
+	}
+
+	public Selection selectWhereLessThanOrEqualTo(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereLessThanOrEqualTo(key, value);
+		return this;
+	}
+
+	public Selection selectWhereGreaterThan(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereGreaterThan(key, value);
+		return this;
+	}
+
+	public Selection selectWhereGreaterThanOrEqualTo(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereGreaterThanOrEqualTo(key, value);
+		return this;
+	}
+
+	public Selection selectWhereContains(String key, Object value) {
+		DAO.checkRead(key);
+		query = query.whereArrayContains(key, value);
+		return this;
+	}
+
+	public Selection selectWhereContainsAny(String key, List<?> values) {
+		DAO.checkRead(key);
+		DAO.checkIn(values);
+		query = query.whereArrayContainsAny(key, values);
+		return this;
 	}
 
 	public Selection orderBy(String orderBy, boolean descending) {
