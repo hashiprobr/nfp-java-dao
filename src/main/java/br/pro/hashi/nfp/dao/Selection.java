@@ -3,7 +3,6 @@ package br.pro.hashi.nfp.dao;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Query;
 import com.google.cloud.firestore.Query.Direction;
 import com.google.cloud.firestore.QuerySnapshot;
@@ -29,20 +28,6 @@ public class Selection {
 			throw new InterruptedFirestoreException(exception);
 		}
 		return documents;
-	}
-
-	public Selection select(List<?> rawKeys) {
-		List<String> keys = DAO.convert(rawKeys);
-		DAO.checkRead(keys);
-		query = query.whereIn(FieldPath.documentId(), keys);
-		return this;
-	}
-
-	public Selection selectExcept(List<?> rawKeys) {
-		List<String> keys = DAO.convert(rawKeys);
-		DAO.checkRead(keys);
-		query = query.whereNotIn(FieldPath.documentId(), keys);
-		return this;
 	}
 
 	public Selection selectWhereIn(String key, List<?> values) {

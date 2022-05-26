@@ -16,7 +16,6 @@ import com.google.cloud.WriteChannel;
 import com.google.cloud.firestore.CollectionReference;
 import com.google.cloud.firestore.DocumentReference;
 import com.google.cloud.firestore.DocumentSnapshot;
-import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.firestore.WriteBatch;
 import com.google.cloud.storage.Acl;
@@ -33,26 +32,6 @@ import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
 
 public abstract class DAO<T> {
-	private static String convert(Object rawKey) {
-		if (rawKey == null) {
-			return null;
-		} else {
-			return rawKey.toString();
-		}
-	}
-
-	static List<String> convert(List<?> rawKeys) {
-		if (rawKeys == null) {
-			return null;
-		} else {
-			List<String> keys = new ArrayList<>();
-			for (Object rawKey : rawKeys) {
-				keys.add(convert(rawKey));
-			}
-			return keys;
-		}
-	}
-
 	static void checkRead(String key) {
 		if (key == null) {
 			throw new FormatFirestoreException("Key cannot be null");
@@ -62,18 +41,6 @@ public abstract class DAO<T> {
 		}
 		if (key.indexOf('/') != -1) {
 			throw new FormatFirestoreException("Key cannot have slashes");
-		}
-	}
-
-	static void checkRead(List<String> keys) {
-		if (keys == null) {
-			throw new FormatFirestoreException("List of keys cannot be null");
-		}
-		if (keys.isEmpty()) {
-			throw new FormatFirestoreException("List of keys cannot be empty");
-		}
-		for (String key : keys) {
-			checkRead(key);
 		}
 	}
 
@@ -177,6 +144,23 @@ public abstract class DAO<T> {
 		this.bucket = null;
 	}
 
+	private void refresh() {
+		Firestore instance = firebase.getFirestore();
+		if (firestore != instance) {
+			firestore = instance;
+			collection = firestore.collection(path);
+		}
+		bucket = firebase.getBucket();
+	}
+
+	private String convert(Object rawKey) {
+		if (rawKey == null) {
+			return null;
+		} else {
+			return rawKey.toString();
+		}
+	}
+
 	private String get(Field field, T value) {
 		Object rawKey;
 		try {
@@ -193,15 +177,6 @@ public abstract class DAO<T> {
 		} catch (IllegalAccessException exception) {
 			throw new AccessFirestoreException(exception);
 		}
-	}
-
-	private void refresh() {
-		Firestore instance = firebase.getFirestore();
-		if (firestore != instance) {
-			firestore = instance;
-			collection = firestore.collection(path);
-		}
-		bucket = firebase.getBucket();
 	}
 
 	private void checkWrite(T value) {
@@ -363,20 +338,6 @@ public abstract class DAO<T> {
 	public Selection select() {
 		initialized();
 		return new Selection(collection);
-	}
-
-	public Selection select(List<?> rawKeys) {
-		List<String> keys = convert(rawKeys);
-		checkRead(keys);
-		initialized();
-		return new Selection(collection.whereIn(FieldPath.documentId(), keys));
-	}
-
-	public Selection selectExcept(List<?> rawKeys) {
-		List<String> keys = convert(rawKeys);
-		checkRead(keys);
-		initialized();
-		return new Selection(collection.whereNotIn(FieldPath.documentId(), keys));
 	}
 
 	public Selection selectWhereIn(String key, List<?> values) {
