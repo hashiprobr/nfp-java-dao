@@ -265,11 +265,7 @@ public abstract class DAO<T> {
 		return document;
 	}
 
-	private DocumentReference preUpdate(T value) {
-		checkWrite(value);
-		String key = get(keyField, value);
-		checkRead(key);
-		initialized();
+	private DocumentReference preUpdate(String key) {
 		DocumentReference document = collection.document(key);
 		try {
 			if (!document.get().get().exists()) {
@@ -283,9 +279,48 @@ public abstract class DAO<T> {
 		return document;
 	}
 
+	private DocumentReference preUpdate(T value) {
+		checkWrite(value);
+		String key = get(keyField, value);
+		checkRead(key);
+		initialized();
+		return preUpdate(key);
+	}
+
+	private DocumentReference preUpdate(Map<String, Object> values) {
+		if (values == null) {
+			throw new FormatFirestoreException("Map of values cannot be null");
+		}
+		for (String name : values.keySet()) {
+			try {
+				type.getDeclaredField(name);
+			} catch (NoSuchFieldException exception) {
+				throw new FormatFirestoreException("Map of values cannot have %s".formatted(name));
+			}
+		}
+		String keyName = keyField.getName();
+		if (!values.containsKey(keyName)) {
+			throw new FormatFirestoreException("Map of values must have %s".formatted(keyName));
+		}
+		String key = convert(values.get(keyName));
+		checkRead(key);
+		initialized();
+		return preUpdate(key);
+	}
+
 	private void postCreateOrUpdate(DocumentReference document, T value) {
 		try {
 			document.set(value).get();
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+	}
+
+	private void postUpdate(DocumentReference document, Map<String, Object> values) {
+		try {
+			document.set(values).get();
 		} catch (ExecutionException exception) {
 			throw new ExecutionFirestoreException(exception);
 		} catch (InterruptedException exception) {
@@ -519,6 +554,64 @@ public abstract class DAO<T> {
 	public void update(T value) {
 		DocumentReference document = preUpdate(value);
 		postCreateOrUpdate(document, value);
+	}
+
+	public void update(Map<String, Object> values, Map<String, InputStream> streams) {
+		DocumentReference document = preUpdate(values);
+		String key = document.getId();
+		InputStream stream;
+		for (String name : streams.keySet()) {
+			if (fileFields.get(name) == null) {
+				throw new FormatStorageException("File %s does not exist".formatted(name));
+			}
+			if (values.containsKey(name)) {
+				throw new FormatStorageException("Map of values cannot have %s".formatted(name));
+			}
+			stream = streams.get(name);
+			checkFile(stream);
+		}
+		for (String name : streams.keySet()) {
+			stream = streams.get(name);
+			String blobPath = buildPath(key, name);
+			Blob blob = bucket.get(blobPath);
+			if (blob == null) {
+				blob = bucket.create(blobPath, stream);
+				blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
+			} else {
+				WriteChannel writer = blob.writer();
+				try {
+					ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
+					writer.write(source);
+					writer.close();
+				} catch (IOException exception) {
+					throw new IOFirebaseException(exception);
+				}
+				blob = bucket.get(blobPath);
+			}
+			String url = blob.getMediaLink();
+			values.put(name, url);
+		}
+		List<String> blobPaths = new ArrayList<>();
+		for (String name : fileFields.keySet()) {
+			if (values.containsKey(name)) {
+				if (values.get(name) == null) {
+					blobPaths.add(buildPath(key, name));
+				}
+			}
+		}
+		if (!blobPaths.isEmpty()) {
+			for (Blob blob : bucket.get(blobPaths)) {
+				if (blob != null) {
+					blob.delete();
+				}
+			}
+		}
+		postUpdate(document, values);
+	}
+
+	public void update(Map<String, Object> values) {
+		DocumentReference document = preUpdate(values);
+		postUpdate(document, values);
 	}
 
 	public void delete(Object rawKey) {
