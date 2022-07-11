@@ -30,63 +30,63 @@ public class Selection {
 		return documents;
 	}
 
-	public Selection selectWhereIn(String key, List<?> values) {
+	public Selection whereIn(String key, List<?> values) {
 		DAO.checkRead(key);
 		DAO.checkIn(values);
 		query = query.whereIn(key, values);
 		return this;
 	}
 
-	public Selection selectWhereNotIn(String key, List<?> values) {
+	public Selection whereNotIn(String key, List<?> values) {
 		DAO.checkRead(key);
 		DAO.checkIn(values);
 		query = query.whereNotIn(key, values);
 		return this;
 	}
 
-	public Selection selectWhereEqualTo(String key, Object value) {
+	public Selection whereEqualTo(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereEqualTo(key, value);
 		return this;
 	}
 
-	public Selection selectWhereNotEqualTo(String key, Object value) {
+	public Selection whereNotEqualTo(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereNotEqualTo(key, value);
 		return this;
 	}
 
-	public Selection selectWhereLessThan(String key, Object value) {
+	public Selection whereLessThan(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereLessThan(key, value);
 		return this;
 	}
 
-	public Selection selectWhereLessThanOrEqualTo(String key, Object value) {
+	public Selection whereLessThanOrEqualTo(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereLessThanOrEqualTo(key, value);
 		return this;
 	}
 
-	public Selection selectWhereGreaterThan(String key, Object value) {
+	public Selection whereGreaterThan(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereGreaterThan(key, value);
 		return this;
 	}
 
-	public Selection selectWhereGreaterThanOrEqualTo(String key, Object value) {
+	public Selection whereGreaterThanOrEqualTo(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereGreaterThanOrEqualTo(key, value);
 		return this;
 	}
 
-	public Selection selectWhereContains(String key, Object value) {
+	public Selection whereContains(String key, Object value) {
 		DAO.checkRead(key);
 		query = query.whereArrayContains(key, value);
 		return this;
 	}
 
-	public Selection selectWhereContainsAny(String key, List<?> values) {
+	public Selection whereContainsAny(String key, List<?> values) {
 		DAO.checkRead(key);
 		DAO.checkIn(values);
 		query = query.whereArrayContainsAny(key, values);
