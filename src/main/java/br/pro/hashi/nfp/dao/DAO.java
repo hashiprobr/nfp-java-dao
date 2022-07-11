@@ -338,7 +338,7 @@ public abstract class DAO<T> {
 		}
 	}
 
-	public Selection select() {
+	public Selection selectAll() {
 		initialized();
 		return new Selection(collection);
 	}
