@@ -1,4 +1,4 @@
-package br.pro.hashi.nfp.dao;
+package br.pro.hashi.nfp.dao.annotation;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;

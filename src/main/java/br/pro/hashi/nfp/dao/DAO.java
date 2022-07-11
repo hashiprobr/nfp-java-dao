@@ -22,6 +22,9 @@ import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 
+import br.pro.hashi.nfp.dao.annotation.Autokey;
+import br.pro.hashi.nfp.dao.annotation.File;
+import br.pro.hashi.nfp.dao.annotation.Key;
 import br.pro.hashi.nfp.dao.exception.AccessFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExistenceFirestoreException;
