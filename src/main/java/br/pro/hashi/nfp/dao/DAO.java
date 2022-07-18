@@ -27,6 +27,7 @@ import br.pro.hashi.nfp.dao.exception.AccessFirestoreException;
 import br.pro.hashi.nfp.dao.exception.BytecodeFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
+import br.pro.hashi.nfp.dao.exception.QueryFirestoreException;
 import br.pro.hashi.nfp.dao.exception.RequestFirestoreException;
 import br.pro.hashi.nfp.dao.exception.StorageFirestoreException;
 
@@ -98,11 +99,16 @@ public abstract class DAO<T> {
 		if (object == null) {
 			throw new IllegalArgumentException("Object cannot be null");
 		}
+		ready();
 	}
 
 	private void validate(Selection selection) {
 		if (selection == null) {
 			throw new IllegalArgumentException("Selection cannot be null");
+		}
+		ready();
+		if (!selection.getFirestore().equals(firestore)) {
+			throw new QueryFirestoreException("Firebase instance is not the one that generated the selection");
 		}
 	}
 
@@ -351,7 +357,6 @@ public abstract class DAO<T> {
 
 	public void create(T object, Map<String, InputStream> streams, Class<? extends Adapter<T>> adapter) {
 		validate(object);
-		ready();
 		String key;
 		DocumentReference document;
 		if (auto) {
@@ -416,9 +421,8 @@ public abstract class DAO<T> {
 
 	public List<T> retrieve(Selection selection, Class<? extends Adapter<T>> adapter) {
 		validate(selection);
-		ready();
 		List<T> values = new ArrayList<>();
-		for (DocumentSnapshot document : selection.getDocuments(firestore)) {
+		for (DocumentSnapshot document : selection.getDocuments()) {
 			values.add(postRetrieve(document, adapter));
 		}
 		return values;
@@ -430,7 +434,6 @@ public abstract class DAO<T> {
 
 	public void update(T object, Map<String, InputStream> streams, Class<? extends Adapter<T>> adapter) {
 		validate(object);
-		ready();
 		Object rawKey = get(keyField, object);
 		String key = convert(rawKey);
 		DocumentReference document = preUpdate(key);
@@ -577,10 +580,9 @@ public abstract class DAO<T> {
 
 	public void delete(Selection selection) {
 		validate(selection);
-		ready();
 		WriteBatch batch = firestore.batch();
 		List<String> blobPaths = new ArrayList<>();
-		for (DocumentSnapshot document : selection.getDocuments(firestore)) {
+		for (DocumentSnapshot document : selection.getDocuments()) {
 			batch.delete(document.getReference());
 			String key = document.getId();
 			for (String name : fileFields.keySet()) {

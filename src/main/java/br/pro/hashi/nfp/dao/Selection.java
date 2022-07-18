@@ -10,7 +10,6 @@ import com.google.cloud.firestore.QuerySnapshot;
 
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
-import br.pro.hashi.nfp.dao.exception.QueryFirestoreException;
 
 public class Selection {
 	private static final int NAME_LIMIT = 1500;
@@ -50,10 +49,11 @@ public class Selection {
 		this.query = query;
 	}
 
-	QuerySnapshot getDocuments(Firestore firestore) {
-		if (query.getFirestore() != firestore) {
-			throw new QueryFirestoreException("Firebase instance is not the one that generated the selection");
-		}
+	Firestore getFirestore() {
+		return query.getFirestore();
+	}
+
+	QuerySnapshot getDocuments() {
 		QuerySnapshot documents;
 		try {
 			documents = query.get().get();
