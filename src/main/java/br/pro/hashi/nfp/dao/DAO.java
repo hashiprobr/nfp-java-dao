@@ -541,7 +541,7 @@ public abstract class DAO<T> {
 			}
 		}
 		try {
-			document.set(values).get();
+			document.update(values).get();
 		} catch (ExecutionException exception) {
 			throw new ExecutionFirestoreException(exception);
 		} catch (InterruptedException exception) {
