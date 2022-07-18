@@ -1,48 +1,50 @@
 package br.pro.hashi.nfp.dao;
 
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.cloud.firestore.CollectionReference;
 import com.google.cloud.firestore.Firestore;
 import com.google.cloud.storage.Bucket;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.cloud.FirestoreClient;
 import com.google.firebase.cloud.StorageClient;
-import com.google.inject.AbstractModule;
-import com.google.inject.Guice;
-import com.google.inject.Injector;
-import com.google.inject.Singleton;
 
-import br.pro.hashi.nfp.dao.exception.FirebaseException;
+import br.pro.hashi.nfp.dao.exception.UnavailableFirebaseException;
 
 public class Firebase {
-	private static final Injector injector = Guice.createInjector(new AbstractModule() {
-		@Override
-		protected void configure() {
-			bind(FirebaseManager.class).to(FirebaseManagerImpl.class).in(Singleton.class);
-		}
-	});
+	private static final FirebaseManager MANAGER = new FirebaseManager();
 
-	public static FirebaseManager Manager() {
-		return injector.getInstance(FirebaseManager.class);
+	public static FirebaseManager manager() {
+		return MANAGER;
 	}
 
+	private final Logger logger;
 	private final FirebaseManager manager;
 	private final FirebaseOptions options;
-	private final String url;
-	private final String name;
+	private final String id;
 	private FirebaseApp app;
 	private Firestore firestore;
+	private Map<String, CollectionReference> collections;
 	private Bucket bucket;
-	private boolean connected;
 
-	Firebase(FirebaseManager manager, FirebaseOptions options, String url, String name) {
+	Firebase(FirebaseManager manager, FirebaseOptions options, String id) {
+		this.logger = LoggerFactory.getLogger(Firebase.class);
 		this.manager = manager;
 		this.options = options;
-		this.url = url;
-		this.name = name;
+		this.id = id;
 		this.app = null;
 		this.firestore = null;
+		this.collections = null;
 		this.bucket = null;
-		this.connected = false;
+	}
+
+	String getId() {
+		return id;
 	}
 
 	Firestore getFirestore() {
@@ -53,58 +55,50 @@ public class Firebase {
 		return bucket;
 	}
 
-	boolean isConnected() {
-		return connected;
+	Source reflect(Class<?> type) {
+		return manager.reflect(type);
 	}
 
-	void checkExistence() {
-		if (!manager.contains(name)) {
-			throw new FirebaseException("This Firebase instance has been removed");
+	CollectionReference collection(String path) {
+		CollectionReference collection = collections.get(path);
+		if (collection == null) {
+			collection = firestore.collection(path);
+			collections.put(path, collection);
 		}
-	}
-
-	void checkConnection() {
-		if (!connected) {
-			throw new FirebaseException("This Firebase instance is not connected");
-		}
+		return collection;
 	}
 
 	public void connect() {
-		checkExistence();
-		if (connected) {
-			throw new FirebaseException("This Firebase instance is already connected");
+		if (!manager.contains(this)) {
+			throw new UnavailableFirebaseException("Firebase instance has been deleted");
 		}
-
-		System.out.println("Connecting Firebase instance...");
-
-		if (name == null) {
-			app = FirebaseApp.initializeApp(options);
-		} else {
-			app = FirebaseApp.initializeApp(options, name);
+		if (app != null) {
+			return;
 		}
-
+		logger.info("Connecting Firebase instance...");
+		app = FirebaseApp.initializeApp(options, id);
+		String url = "%s.appspot.com".formatted(id);
 		firestore = FirestoreClient.getFirestore(app);
-
+		collections = new HashMap<>();
 		bucket = StorageClient.getInstance(app).bucket(url);
-
-		connected = true;
-
-		System.out.println("Firebase instance connected");
+		logger.info("Firebase instance connected to %s".formatted(id));
 	}
 
 	public void disconnect() {
-		checkExistence();
-		checkConnection();
-		System.out.println("Disconnecting Firebase instance...");
+		if (app == null) {
+			return;
+		}
+		logger.info("Disconnecting Firebase instance from %s...".formatted(id));
+		bucket = null;
+		collections = null;
+		firestore = null;
 		app.delete();
 		app = null;
-		firestore = null;
-		bucket = null;
-		connected = false;
-		System.out.println("Firebase instance disconnected");
+		logger.info("Firebase instance disconnected");
 	}
 
-	public void remove() {
-		manager.remove(name);
+	public void delete() {
+		disconnect();
+		manager.remove(this);
 	}
 }

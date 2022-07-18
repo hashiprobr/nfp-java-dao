@@ -3,11 +3,12 @@ package br.pro.hashi.nfp.dao;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -22,217 +23,351 @@ import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 
-import br.pro.hashi.nfp.dao.annotation.Autokey;
-import br.pro.hashi.nfp.dao.annotation.File;
-import br.pro.hashi.nfp.dao.annotation.Key;
 import br.pro.hashi.nfp.dao.exception.AccessFirestoreException;
+import br.pro.hashi.nfp.dao.exception.BytecodeFirestoreException;
 import br.pro.hashi.nfp.dao.exception.ExecutionFirestoreException;
-import br.pro.hashi.nfp.dao.exception.ExistenceFirestoreException;
-import br.pro.hashi.nfp.dao.exception.ExistenceStorageException;
-import br.pro.hashi.nfp.dao.exception.FormatFirestoreException;
-import br.pro.hashi.nfp.dao.exception.FormatStorageException;
-import br.pro.hashi.nfp.dao.exception.IOFirebaseException;
 import br.pro.hashi.nfp.dao.exception.InterruptedFirestoreException;
+import br.pro.hashi.nfp.dao.exception.RequestFirestoreException;
+import br.pro.hashi.nfp.dao.exception.StorageFirestoreException;
 
 public abstract class DAO<T> {
-	static void checkRead(String key) {
-		if (key == null) {
-			throw new FormatFirestoreException("Key cannot be null");
-		}
-		if (key.isBlank()) {
-			throw new FormatFirestoreException("Key cannot be blank");
-		}
-		if (key.indexOf('/') != -1) {
-			throw new FormatFirestoreException("Key cannot have slashes");
-		}
-	}
-
-	static void checkIn(List<?> values) {
-		if (values == null) {
-			throw new FormatFirestoreException("List of values cannot be null");
-		}
-		if (values.isEmpty()) {
-			throw new FormatFirestoreException("List of values cannot be empty");
-		}
-	}
+	private static final int CODE_LIMIT = 1500;
+	private static final String CODE_INVALID = "__.*__";
 
 	private final String path;
 	private final Class<T> type;
-	private Field keyField;
-	private boolean auto;
-	private Map<String, Field> fileFields;
 	private Firebase firebase;
 	private Firestore firestore;
 	private CollectionReference collection;
 	private Bucket bucket;
+	private Source source;
+	private boolean auto;
+	private Field keyField;
+	private Map<String, Field> fileFields;
 
 	@SuppressWarnings("unchecked")
 	protected DAO(String path) {
 		if (path == null) {
-			throw new FormatFirestoreException("Path cannot be null");
+			throw new IllegalArgumentException("Firestore code cannot be null");
 		}
-		if (path.isBlank()) {
-			throw new FormatFirestoreException("Path cannot be blank");
-		}
-		if (path.indexOf('/') != -1) {
-			throw new FormatFirestoreException("Path cannot have slashes");
-		}
-		this.path = path;
+		this.path = clean(path);
 
 		ParameterizedType genericType = (ParameterizedType) getClass().getGenericSuperclass();
 		Type[] types = genericType.getActualTypeArguments();
 		this.type = (Class<T>) types[0];
 
-		String className = this.type.getName();
-
-		try {
-			this.type.getConstructor();
-		} catch (NoSuchMethodException exception) {
-			throw new FormatFirestoreException("Class %s must have a public no-argument constructor".formatted(className));
-		}
-
-		this.keyField = null;
-		this.auto = false;
-		this.fileFields = new HashMap<>();
-		for (Field field : this.type.getDeclaredFields()) {
-			String fieldName = field.getName();
-			if (field.isAnnotationPresent(Key.class)) {
-				if (field.isAnnotationPresent(Autokey.class)) {
-					throw new FormatFirestoreException("Field %s of class %s cannot be both a key and an autokey".formatted(fieldName, className));
-				} else {
-					if (this.keyField == null) {
-						this.keyField = field;
-					} else {
-						if (this.auto) {
-							throw new FormatFirestoreException("Class %s cannot have both an autokey and a key".formatted(className));
-						} else {
-							throw new FormatFirestoreException("Class %s cannot have more than one key".formatted(className));
-						}
-					}
-				}
-			} else {
-				if (field.isAnnotationPresent(Autokey.class)) {
-					if (this.keyField == null) {
-						if (field.getType() != String.class) {
-							throw new FormatFirestoreException("Autokey %s of class %s must be a string".formatted(fieldName, className));
-						}
-						this.keyField = field;
-						this.auto = true;
-					} else {
-						if (this.auto) {
-							throw new FormatFirestoreException("Class %s cannot have more than one autokey".formatted(className));
-						} else {
-							throw new FormatFirestoreException("Class %s cannot have both a key and an autokey".formatted(className));
-						}
-					}
-				}
-			}
-			if (field.isAnnotationPresent(File.class)) {
-				if (field.getType() != String.class) {
-					throw new FormatFirestoreException("File %s of class %s must be a string".formatted(fieldName, className));
-				}
-				field.setAccessible(true);
-				this.fileFields.put(fieldName, field);
-			}
-		}
-
-		if (this.keyField == null) {
-			throw new FormatFirestoreException("Class %s must have either a key or an autokey".formatted(className));
-		}
-		this.keyField.setAccessible(true);
-
 		this.firebase = null;
 		this.firestore = null;
 		this.collection = null;
 		this.bucket = null;
+
+		this.source = null;
+		this.auto = false;
+		this.keyField = null;
+		this.fileFields = null;
 	}
 
-	private void refresh() {
-		Firestore instance = firebase.getFirestore();
-		if (firestore != instance) {
-			firestore = instance;
-			collection = firestore.collection(path);
+	private String clean(String code) {
+		code = code.strip();
+		if (code.isEmpty()) {
+			throw new IllegalArgumentException("Firestore code cannot be blank");
 		}
-		bucket = firebase.getBucket();
+		if (code.getBytes().length > CODE_LIMIT) {
+			throw new IllegalArgumentException("Firestore code cannot have more than %d bytes".formatted(CODE_LIMIT));
+		}
+		if (code.indexOf('/') != -1) {
+			throw new IllegalArgumentException("Firestore code cannot have slashes");
+		}
+		if (code.equals(".") || code.equals("..")) {
+			throw new IllegalArgumentException("Firestore code cannot be a single point or double points");
+		}
+		if (code.matches(CODE_INVALID)) {
+			throw new IllegalArgumentException("Firestore code cannot match the regular expression %s".formatted(CODE_INVALID));
+		}
+		return code;
 	}
 
 	private String convert(Object rawKey) {
 		if (rawKey == null) {
-			return null;
-		} else {
-			return rawKey.toString();
+			throw new IllegalArgumentException("Firestore code cannot be null");
+		}
+		return clean(rawKey.toString());
+	}
+
+	private void validate(T object) {
+		if (object == null) {
+			throw new IllegalArgumentException("Object cannot be null");
 		}
 	}
 
-	private String get(Field field, T value) {
-		Object rawKey;
-		try {
-			rawKey = field.get(value);
-		} catch (IllegalAccessException exception) {
-			throw new AccessFirestoreException(exception);
-		}
-		return convert(rawKey);
-	}
-
-	private void set(Field field, T value, String key) {
-		try {
-			field.set(value, key);
-		} catch (IllegalAccessException exception) {
-			throw new AccessFirestoreException(exception);
-		}
-	}
-
-	private void checkWrite(T value) {
-		if (value == null) {
-			throw new FormatFirestoreException("Value cannot be null");
-		}
-	}
-
-	private void checkQuery(Selection selection) {
+	private void validate(Selection selection) {
 		if (selection == null) {
-			throw new FormatFirestoreException("Selection cannot be null");
+			throw new IllegalArgumentException("Selection cannot be null");
 		}
 	}
 
-	private void checkFile(T value, String name) {
-		Field field = fileFields.get(name);
-		if (field == null) {
-			throw new FormatStorageException("File %s does not exist".formatted(name));
-		}
-		if (get(field, value) != null) {
-			throw new FormatStorageException("File %s must be null".formatted(name));
+	private void validate(Map<String, InputStream> streams, String name) {
+		if (streams.get(name) == null) {
+			throw new IllegalArgumentException("Input stream %s cannot be null".formatted(name));
 		}
 	}
 
-	private void checkFile(InputStream stream) {
-		if (stream == null) {
-			throw new FormatStorageException("Stream cannot be null");
-		}
-	}
-
-	private String buildPath(String key, String name) {
+	private String join(String key, String name) {
 		return "%s/%s/%s".formatted(path, key, name);
 	}
 
-	private DocumentReference preCreate(T value) {
-		checkWrite(value);
-		initialized();
+	private Object get(Field field, T object) {
+		Object value;
+		try {
+			value = field.get(object);
+		} catch (IllegalAccessException exception) {
+			throw new AccessFirestoreException(exception);
+		}
+		return value;
+	}
+
+	private void set(Field field, T object, String value) {
+		try {
+			field.set(object, value);
+		} catch (IllegalAccessException exception) {
+			throw new AccessFirestoreException(exception);
+		}
+	}
+
+	private DocumentReference preUpdate(String key) {
+		DocumentReference document = collection.document(key);
+		try {
+			if (!document.get().get().exists()) {
+				throw new RequestFirestoreException("Key %s does not exist in database".formatted(key));
+			}
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+		return document;
+	}
+
+	private String createOrUpdate(Map<String, InputStream> streams, String name, String key) {
+		InputStream stream = streams.get(name);
+		String blobPath = join(key, name);
+		Blob blob = bucket.get(blobPath);
+		if (blob == null) {
+			blob = bucket.create(blobPath, stream);
+			blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
+		} else {
+			WriteChannel writer = blob.writer();
+			try {
+				ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
+				writer.write(source);
+				writer.close();
+			} catch (IOException exception) {
+				throw new StorageFirestoreException(exception);
+			}
+			blob = bucket.get(blobPath);
+		}
+		return blob.getMediaLink();
+	}
+
+	private void createOrUpdate(T object, Map<String, InputStream> streams, String key) {
+		Field field;
+		for (String name : streams.keySet()) {
+			field = fileFields.get(name);
+			if (field == null) {
+				throw new IllegalArgumentException("File field %s does not exist in class %s".formatted(name, type.getName()));
+			}
+			if (get(field, object) != null) {
+				throw new IllegalArgumentException("File field %s must be null in object".formatted(name));
+			}
+			validate(streams, name);
+		}
+		for (String name : streams.keySet()) {
+			field = fileFields.get(name);
+			String url = createOrUpdate(streams, name, key);
+			set(field, object, url);
+		}
+	}
+
+	private void delete(List<String> blobPaths) {
+		if (!blobPaths.isEmpty()) {
+			for (Blob blob : bucket.get(blobPaths)) {
+				if (blob != null) {
+					blob.delete();
+				}
+			}
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private T postRetrieve(DocumentSnapshot document, Class<? extends Adapter<T>> adapter) {
+		T object;
+		if (adapter == null) {
+			object = document.toObject(type);
+		} else {
+			Class<?> proxyType = source.compile(adapter.getName());
+			object = ((Adapter<T>) document.toObject(proxyType)).that;
+		}
+		return object;
+	}
+
+	private void postCreateOrUpdate(T object, DocumentReference document, Class<? extends Adapter<T>> adapter) {
+		Object proxy = null;
+		if (adapter != null) {
+			Class<?> proxyType = source.compile(adapter.getName());
+			try {
+				proxy = proxyType.getDeclaredConstructor(type).newInstance(object);
+			} catch (NoSuchMethodException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (InvocationTargetException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (IllegalAccessException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (InstantiationException exception) {
+				throw new BytecodeFirestoreException(exception);
+			}
+		}
+		try {
+			if (proxy == null) {
+				document.set(object).get();
+			} else {
+				document.set(proxy).get();
+			}
+		} catch (ExecutionException exception) {
+			throw new ExecutionFirestoreException(exception);
+		} catch (InterruptedException exception) {
+			throw new InterruptedFirestoreException(exception);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private <S extends DAO<T>> S refreshed() {
+		firebase.connect();
+		firestore = firebase.getFirestore();
+		collection = firebase.collection(path);
+		bucket = firebase.getBucket();
+		if (source == null) {
+			source = firebase.reflect(type);
+			auto = source.isAuto();
+			keyField = source.getKeyField();
+			fileFields = source.getFileFields();
+		}
+		return (S) this;
+	}
+
+	public <S extends DAO<T>> S fromCredentials(FirebaseManager manager, String path) {
+		firebase = manager.getFromCredentials(path);
+		return refreshed();
+	}
+
+	public <S extends DAO<T>> S fromCredentials(String path) {
+		return fromCredentials(Firebase.manager(), path);
+	}
+
+	public <S extends DAO<T>> S from(FirebaseManager manager, String id) {
+		firebase = manager.get(id);
+		return refreshed();
+	}
+
+	public <S extends DAO<T>> S from(FirebaseManager manager) {
+		firebase = manager.get();
+		return refreshed();
+	}
+
+	public <S extends DAO<T>> S from(String id) {
+		return from(Firebase.manager(), id);
+	}
+
+	public <S extends DAO<T>> S ready() {
+		if (firebase == null) {
+			return from(Firebase.manager());
+		}
+		return refreshed();
+	}
+
+	public Selection selectAll() {
+		ready();
+		return new Selection(collection);
+	}
+
+	public Selection selectWhereEqualTo(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereEqualTo(name, value));
+	}
+
+	public Selection selectWhereNotEqualTo(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereNotEqualTo(name, value));
+	}
+
+	public Selection selectWhereLessThan(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereLessThan(name, value));
+	}
+
+	public Selection selectWhereLessThanOrEqualTo(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereLessThanOrEqualTo(name, value));
+	}
+
+	public Selection selectWhereGreaterThan(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereGreaterThan(name, value));
+	}
+
+	public Selection selectWhereGreaterThanOrEqualTo(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereGreaterThanOrEqualTo(name, value));
+	}
+
+	public Selection selectWhereContains(String name, Object value) {
+		name = Selection.clean(name);
+		ready();
+		return new Selection(collection.whereArrayContains(name, value));
+	}
+
+	public Selection selectWhereContainsAny(String name, List<?> values) {
+		name = Selection.clean(name, values);
+		ready();
+		return new Selection(collection.whereArrayContainsAny(name, values));
+	}
+
+	public Selection selectWhereIn(String name, List<?> values) {
+		name = Selection.clean(name, values);
+		ready();
+		return new Selection(collection.whereIn(name, values));
+	}
+
+	public Selection selectWhereNotIn(String name, List<?> values) {
+		name = Selection.clean(name, values);
+		ready();
+		return new Selection(collection.whereNotIn(name, values));
+	}
+
+	public void create(T object, Map<String, InputStream> streams, Class<? extends Adapter<T>> adapter) {
+		validate(object);
+		ready();
 		String key;
 		DocumentReference document;
 		if (auto) {
-			if (get(keyField, value) != null) {
-				throw new FormatFirestoreException("Key must be null");
+			if (get(keyField, object) != null) {
+				throw new IllegalArgumentException("Key must be null in object");
 			}
 			document = collection.document();
 			key = document.getId();
-			set(keyField, value, key);
+			set(keyField, object, key);
 		} else {
-			key = get(keyField, value);
-			checkRead(key);
+			Object rawKey = get(keyField, object);
+			key = convert(rawKey);
 			document = collection.document(key);
 			try {
 				if (document.get().get().exists()) {
-					throw new ExistenceFirestoreException("Key %s already exists".formatted(key));
+					throw new RequestFirestoreException("Key %s already exists in database".formatted(key));
 				}
 			} catch (ExecutionException exception) {
 				throw new ExecutionFirestoreException(exception);
@@ -240,63 +375,168 @@ public abstract class DAO<T> {
 				throw new InterruptedFirestoreException(exception);
 			}
 		}
-		return document;
+		if (streams != null) {
+			createOrUpdate(object, streams, key);
+		}
+		postCreateOrUpdate(object, document, adapter);
 	}
 
-	private DocumentReference preUpdate(String key) {
-		DocumentReference document = collection.document(key);
+	public void create(T object, Map<String, InputStream> streams) {
+		create(object, streams, null);
+	}
+
+	public void create(T object, Class<? extends Adapter<T>> adapter) {
+		create(object, null, adapter);
+	}
+
+	public void create(T object) {
+		create(object, null, null);
+	}
+
+	public T retrieve(Object rawKey, Class<? extends Adapter<T>> adapter) {
+		String key = convert(rawKey);
+		ready();
+		DocumentSnapshot document;
 		try {
-			if (!document.get().get().exists()) {
-				throw new ExistenceFirestoreException("Key %s does not exist".formatted(key));
-			}
+			document = collection.document(key).get().get();
 		} catch (ExecutionException exception) {
 			throw new ExecutionFirestoreException(exception);
 		} catch (InterruptedException exception) {
 			throw new InterruptedFirestoreException(exception);
 		}
-		return document;
+		if (!document.exists()) {
+			return null;
+		}
+		return postRetrieve(document, adapter);
 	}
 
-	private DocumentReference preUpdate(T value) {
-		checkWrite(value);
-		String key = get(keyField, value);
-		checkRead(key);
-		initialized();
-		return preUpdate(key);
+	public T retrieve(Object rawKey) {
+		return retrieve(rawKey, null);
 	}
 
-	private DocumentReference preUpdate(Map<String, Object> values) {
+	public List<T> retrieve(Selection selection, Class<? extends Adapter<T>> adapter) {
+		validate(selection);
+		ready();
+		List<T> values = new ArrayList<>();
+		for (DocumentSnapshot document : selection.getDocuments(firestore)) {
+			values.add(postRetrieve(document, adapter));
+		}
+		return values;
+	}
+
+	public List<T> retrieve(Selection selection) {
+		return retrieve(selection, null);
+	}
+
+	public void update(T object, Map<String, InputStream> streams, Class<? extends Adapter<T>> adapter) {
+		validate(object);
+		ready();
+		Object rawKey = get(keyField, object);
+		String key = convert(rawKey);
+		DocumentReference document = preUpdate(key);
+		if (streams != null) {
+			createOrUpdate(object, streams, key);
+			List<String> blobPaths = new ArrayList<>();
+			for (String name : fileFields.keySet()) {
+				Field field = fileFields.get(name);
+				if (get(field, object) == null) {
+					blobPaths.add(join(key, name));
+				}
+			}
+			delete(blobPaths);
+		}
+		postCreateOrUpdate(object, document, adapter);
+	}
+
+	public void update(T object, Map<String, InputStream> streams) {
+		update(object, streams, null);
+	}
+
+	public void update(T object, Class<? extends Adapter<T>> adapter) {
+		update(object, null, adapter);
+	}
+
+	public void update(T object) {
+		update(object, null, null);
+	}
+
+	public void update(Map<String, Object> values, Map<String, InputStream> streams, Class<? extends Adapter<T>> adapter) {
 		if (values == null) {
-			throw new FormatFirestoreException("Map of values cannot be null");
+			throw new IllegalArgumentException("Field map cannot be null");
 		}
 		for (String name : values.keySet()) {
-			try {
-				type.getDeclaredField(name);
-			} catch (NoSuchFieldException exception) {
-				throw new FormatFirestoreException("Map of values cannot have %s".formatted(name));
+			Field field = null;
+			for (Class<?> ancestor = type; !ancestor.equals(Object.class); ancestor = ancestor.getSuperclass()) {
+				try {
+					field = ancestor.getDeclaredField(name);
+					break;
+				} catch (NoSuchFieldException exception) {
+				}
+			}
+			if (field == null) {
+				throw new IllegalArgumentException("Field %s does not exist in class %s".formatted(name, type.getName()));
 			}
 		}
+		ready();
 		String keyName = keyField.getName();
 		if (!values.containsKey(keyName)) {
-			throw new FormatFirestoreException("Map of values must have %s".formatted(keyName));
+			throw new IllegalArgumentException("Field %s must be in map".formatted(keyName));
 		}
-		String key = convert(values.get(keyName));
-		checkRead(key);
-		initialized();
-		return preUpdate(key);
-	}
-
-	private void postCreateOrUpdate(DocumentReference document, T value) {
-		try {
-			document.set(value).get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
+		Object rawKey = values.get(keyName);
+		String key = convert(rawKey);
+		DocumentReference document = preUpdate(key);
+		if (streams != null) {
+			for (String name : streams.keySet()) {
+				if (!fileFields.containsKey(name)) {
+					throw new IllegalArgumentException("File field %s does not exist in class %s".formatted(name, type.getName()));
+				}
+				if (values.containsKey(name)) {
+					throw new IllegalArgumentException("File field %s cannot be in map".formatted(name));
+				}
+				validate(streams, name);
+			}
+			for (String name : streams.keySet()) {
+				String url = createOrUpdate(streams, name, key);
+				values.put(name, url);
+			}
+			List<String> blobPaths = new ArrayList<>();
+			for (String name : fileFields.keySet()) {
+				if (values.containsKey(name) && values.get(name) == null) {
+					blobPaths.add(join(key, name));
+				}
+			}
+			delete(blobPaths);
 		}
-	}
-
-	private void postUpdate(DocumentReference document, Map<String, Object> values) {
+		if (adapter != null) {
+			Class<?> proxyType = source.compile(adapter.getName());
+			try {
+				T object = type.getConstructor().newInstance();
+				Object proxy = proxyType.getDeclaredConstructor(type).newInstance(object);
+				for (String name : values.keySet()) {
+					String methodPrefix = name.substring(0, 1).toUpperCase();
+					String methodSuffix = name.substring(1);
+					String methodName = "get%s%s".formatted(methodPrefix, methodSuffix);
+					try {
+						Method method = proxyType.getDeclaredMethod(methodName);
+						Field field = type.getDeclaredField(name);
+						field.setAccessible(true);
+						field.set(object, values.get(name));
+						values.put(name, method.invoke(proxy));
+					} catch (NoSuchMethodException exception) {
+					}
+				}
+			} catch (NoSuchMethodException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (InvocationTargetException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (IllegalAccessException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (InstantiationException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (NoSuchFieldException exception) {
+				throw new BytecodeFirestoreException(exception);
+			}
+		}
 		try {
 			document.set(values).get();
 		} catch (ExecutionException exception) {
@@ -306,282 +546,21 @@ public abstract class DAO<T> {
 		}
 	}
 
-	@SuppressWarnings("unchecked")
-	public <S extends DAO<T>> S using(FirebaseManager manager, String name) {
-		if (name == null) {
-			firebase = manager.get();
-		} else {
-			firebase = manager.get(name);
-		}
-		firebase.checkConnection();
-		refresh();
-		return (S) this;
-	}
-
-	public <S extends DAO<T>> S using(FirebaseManager manager) {
-		return using(manager, null);
-	}
-
-	public <S extends DAO<T>> S using(String name) {
-		return using(Firebase.Manager(), name);
-	}
-
-	@SuppressWarnings("unchecked")
-	public <S extends DAO<T>> S initialized() {
-		if (firebase == null) {
-			return using(Firebase.Manager(), null);
-		} else {
-			firebase.checkExistence();
-			firebase.checkConnection();
-			refresh();
-			return (S) this;
-		}
-	}
-
-	public Selection selectAll() {
-		initialized();
-		return new Selection(collection);
-	}
-
-	public Selection selectWhereIn(String key, List<?> values) {
-		checkRead(key);
-		checkIn(values);
-		initialized();
-		return new Selection(collection.whereIn(key, values));
-	}
-
-	public Selection selectWhereNotIn(String key, List<?> values) {
-		checkRead(key);
-		checkIn(values);
-		initialized();
-		return new Selection(collection.whereNotIn(key, values));
-	}
-
-	public Selection selectWhereEqualTo(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereEqualTo(key, value));
-	}
-
-	public Selection selectWhereNotEqualTo(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereNotEqualTo(key, value));
-	}
-
-	public Selection selectWhereLessThan(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereLessThan(key, value));
-	}
-
-	public Selection selectWhereLessThanOrEqualTo(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereLessThanOrEqualTo(key, value));
-	}
-
-	public Selection selectWhereGreaterThan(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereGreaterThan(key, value));
-	}
-
-	public Selection selectWhereGreaterThanOrEqualTo(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereGreaterThanOrEqualTo(key, value));
-	}
-
-	public Selection selectWhereContains(String key, Object value) {
-		checkRead(key);
-		initialized();
-		return new Selection(collection.whereArrayContains(key, value));
-	}
-
-	public Selection selectWhereContainsAny(String key, List<?> values) {
-		checkRead(key);
-		checkIn(values);
-		initialized();
-		return new Selection(collection.whereArrayContainsAny(key, values));
-	}
-
-	public void create(T value, Map<String, InputStream> streams) {
-		DocumentReference document = preCreate(value);
-		String key = document.getId();
-		InputStream stream;
-		String blobPath;
-		for (String name : streams.keySet()) {
-			checkFile(value, name);
-			stream = streams.get(name);
-			checkFile(stream);
-			blobPath = buildPath(key, name);
-			if (bucket.get(blobPath) != null) {
-				throw new ExistenceStorageException("Path %s already exists".formatted(blobPath));
-			}
-		}
-		for (String name : streams.keySet()) {
-			Field field = fileFields.get(name);
-			stream = streams.get(name);
-			blobPath = buildPath(key, name);
-			Blob blob = bucket.create(blobPath, stream);
-			blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
-			String url = blob.getMediaLink();
-			set(field, value, url);
-		}
-		postCreateOrUpdate(document, value);
-	}
-
-	public void create(T value) {
-		DocumentReference document = preCreate(value);
-		postCreateOrUpdate(document, value);
-	}
-
-	public T retrieve(Object rawKey) {
-		String key = convert(rawKey);
-		checkRead(key);
-		initialized();
-		DocumentSnapshot document;
-		try {
-			document = collection.document(key).get().get();
-		} catch (ExecutionException exception) {
-			throw new ExecutionFirestoreException(exception);
-		} catch (InterruptedException exception) {
-			throw new InterruptedFirestoreException(exception);
-		}
-		if (document.exists()) {
-			return document.toObject(type);
-		} else {
-			return null;
-		}
-	}
-
-	public List<T> retrieve(Selection selection) {
-		checkQuery(selection);
-		List<T> values = new ArrayList<>();
-		for (DocumentSnapshot document : selection.getDocuments()) {
-			values.add(document.toObject(type));
-		}
-		return values;
-	}
-
-	public void update(T value, Map<String, InputStream> streams) {
-		DocumentReference document = preUpdate(value);
-		String key = document.getId();
-		InputStream stream;
-		Field field;
-		for (String name : streams.keySet()) {
-			checkFile(value, name);
-			stream = streams.get(name);
-			checkFile(stream);
-		}
-		for (String name : streams.keySet()) {
-			field = fileFields.get(name);
-			stream = streams.get(name);
-			String blobPath = buildPath(key, name);
-			Blob blob = bucket.get(blobPath);
-			if (blob == null) {
-				blob = bucket.create(blobPath, stream);
-				blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
-			} else {
-				WriteChannel writer = blob.writer();
-				try {
-					ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
-					writer.write(source);
-					writer.close();
-				} catch (IOException exception) {
-					throw new IOFirebaseException(exception);
-				}
-				blob = bucket.get(blobPath);
-			}
-			String url = blob.getMediaLink();
-			set(field, value, url);
-		}
-		List<String> blobPaths = new ArrayList<>();
-		for (String name : fileFields.keySet()) {
-			field = fileFields.get(name);
-			String url = get(field, value);
-			if (url == null) {
-				blobPaths.add(buildPath(key, name));
-			}
-		}
-		if (!blobPaths.isEmpty()) {
-			for (Blob blob : bucket.get(blobPaths)) {
-				if (blob != null) {
-					blob.delete();
-				}
-			}
-		}
-		postCreateOrUpdate(document, value);
-	}
-
-	public void update(T value) {
-		DocumentReference document = preUpdate(value);
-		postCreateOrUpdate(document, value);
-	}
-
 	public void update(Map<String, Object> values, Map<String, InputStream> streams) {
-		DocumentReference document = preUpdate(values);
-		String key = document.getId();
-		InputStream stream;
-		for (String name : streams.keySet()) {
-			if (fileFields.get(name) == null) {
-				throw new FormatStorageException("File %s does not exist".formatted(name));
-			}
-			if (values.containsKey(name)) {
-				throw new FormatStorageException("Map of values cannot have %s".formatted(name));
-			}
-			stream = streams.get(name);
-			checkFile(stream);
-		}
-		for (String name : streams.keySet()) {
-			stream = streams.get(name);
-			String blobPath = buildPath(key, name);
-			Blob blob = bucket.get(blobPath);
-			if (blob == null) {
-				blob = bucket.create(blobPath, stream);
-				blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
-			} else {
-				WriteChannel writer = blob.writer();
-				try {
-					ByteBuffer source = ByteBuffer.wrap(stream.readAllBytes());
-					writer.write(source);
-					writer.close();
-				} catch (IOException exception) {
-					throw new IOFirebaseException(exception);
-				}
-				blob = bucket.get(blobPath);
-			}
-			String url = blob.getMediaLink();
-			values.put(name, url);
-		}
-		List<String> blobPaths = new ArrayList<>();
-		for (String name : fileFields.keySet()) {
-			if (values.containsKey(name)) {
-				if (values.get(name) == null) {
-					blobPaths.add(buildPath(key, name));
-				}
-			}
-		}
-		if (!blobPaths.isEmpty()) {
-			for (Blob blob : bucket.get(blobPaths)) {
-				if (blob != null) {
-					blob.delete();
-				}
-			}
-		}
-		postUpdate(document, values);
+		update(values, streams, null);
+	}
+
+	public void update(Map<String, Object> values, Class<? extends Adapter<T>> adapter) {
+		update(values, null, adapter);
 	}
 
 	public void update(Map<String, Object> values) {
-		DocumentReference document = preUpdate(values);
-		postUpdate(document, values);
+		update(values, null, null);
 	}
 
 	public void delete(Object rawKey) {
 		String key = convert(rawKey);
-		checkRead(key);
-		initialized();
+		ready();
 		try {
 			collection.document(key).delete().get();
 		} catch (ExecutionException exception) {
@@ -591,26 +570,21 @@ public abstract class DAO<T> {
 		}
 		List<String> blobPaths = new ArrayList<>();
 		for (String name : fileFields.keySet()) {
-			blobPaths.add(buildPath(key, name));
+			blobPaths.add(join(key, name));
 		}
-		if (!blobPaths.isEmpty()) {
-			for (Blob blob : bucket.get(blobPaths)) {
-				if (blob != null) {
-					blob.delete();
-				}
-			}
-		}
+		delete(blobPaths);
 	}
 
 	public void delete(Selection selection) {
-		checkQuery(selection);
+		validate(selection);
+		ready();
 		WriteBatch batch = firestore.batch();
 		List<String> blobPaths = new ArrayList<>();
-		for (DocumentSnapshot document : selection.getDocuments()) {
+		for (DocumentSnapshot document : selection.getDocuments(firestore)) {
 			batch.delete(document.getReference());
 			String key = document.getId();
 			for (String name : fileFields.keySet()) {
-				blobPaths.add(buildPath(key, name));
+				blobPaths.add(join(key, name));
 			}
 		}
 		try {
@@ -620,12 +594,6 @@ public abstract class DAO<T> {
 		} catch (InterruptedException exception) {
 			throw new InterruptedFirestoreException(exception);
 		}
-		if (!blobPaths.isEmpty()) {
-			for (Blob blob : bucket.get(blobPaths)) {
-				if (blob != null) {
-					blob.delete();
-				}
-			}
-		}
+		delete(blobPaths);
 	}
 }
