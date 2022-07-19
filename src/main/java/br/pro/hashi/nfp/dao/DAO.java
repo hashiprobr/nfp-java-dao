@@ -53,7 +53,13 @@ public abstract class DAO<T> {
 		}
 		this.path = clean(path);
 
-		ParameterizedType genericType = (ParameterizedType) getClass().getGenericSuperclass();
+		Class<?> type = getClass();
+		Class<?> ancestor = type.getSuperclass();
+		while (!ancestor.equals(DAO.class)) {
+			type = ancestor;
+			ancestor = type.getSuperclass();
+		}
+		ParameterizedType genericType = (ParameterizedType) type.getGenericSuperclass();
 		Type[] types = genericType.getActualTypeArguments();
 		this.type = (Class<T>) types[0];
 
