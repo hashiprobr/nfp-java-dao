@@ -211,13 +211,21 @@ public abstract class DAO<T> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private T postRetrieve(DocumentSnapshot document, Class<? extends Adapter<T>> adapter) {
+	private T postRetrieve(DocumentSnapshot document, Class<?> proxyType) {
 		T object;
-		if (adapter == null) {
+		if (proxyType == null) {
 			object = document.toObject(type);
 		} else {
-			Class<?> proxyType = source.compile(adapter.getName());
-			object = ((Adapter<T>) document.toObject(proxyType)).that;
+			Object proxy = document.toObject(proxyType);
+			try {
+				Field field = proxyType.getField("that");
+				field.setAccessible(true);
+				object = (T) field.get(proxy);
+			} catch (NoSuchFieldException exception) {
+				throw new BytecodeFirestoreException(exception);
+			} catch (IllegalAccessException exception) {
+				throw new BytecodeFirestoreException(exception);
+			}
 		}
 		return object;
 	}
@@ -418,7 +426,11 @@ public abstract class DAO<T> {
 		if (!document.exists()) {
 			return null;
 		}
-		return postRetrieve(document, adapter);
+		Class<?> proxyType = null;
+		if (adapter != null) {
+			proxyType = source.compile(adapter.getName());
+		}
+		return postRetrieve(document, proxyType);
 	}
 
 	public T retrieve(Object rawKey) {
@@ -427,9 +439,13 @@ public abstract class DAO<T> {
 
 	public List<T> retrieve(Selection selection, Class<? extends Adapter<T>> adapter) {
 		validate(selection);
+		Class<?> proxyType = null;
+		if (adapter != null) {
+			proxyType = source.compile(adapter.getName());
+		}
 		List<T> values = new ArrayList<>();
 		for (DocumentSnapshot document : selection.getDocuments()) {
-			values.add(postRetrieve(document, adapter));
+			values.add(postRetrieve(document, proxyType));
 		}
 		return values;
 	}
