@@ -159,7 +159,7 @@ class Source {
 				for (CtMethod ctAdapterMethod : ctAdapter.getMethods()) {
 					int modifiers = ctAdapterMethod.getModifiers();
 					CtClass declaring = ctAdapterMethod.getDeclaringClass();
-					if ((modifiers & Modifier.PUBLIC) > 0 && !declaring.equals(ctObject)) {
+					if (Modifier.isPublic(modifiers) && !declaring.equals(ctObject)) {
 						String methodName = ctAdapterMethod.getName();
 						methodNames.add(methodName);
 						CtMethod ctMethod = new CtMethod(ctAdapterMethod, ctProxy, null);
@@ -170,7 +170,7 @@ class Source {
 				for (CtMethod ctTypeMethod : ctType.getMethods()) {
 					int modifiers = ctTypeMethod.getModifiers();
 					CtClass declaring = ctTypeMethod.getDeclaringClass();
-					if ((modifiers & Modifier.PUBLIC) > 0 && !declaring.equals(ctObject)) {
+					if (Modifier.isPublic(modifiers) && !declaring.equals(ctObject)) {
 						String methodName = ctTypeMethod.getName();
 						if (!methodNames.contains(methodName)) {
 							CtMethod ctMethod = new CtMethod(ctTypeMethod, ctProxy, null);
