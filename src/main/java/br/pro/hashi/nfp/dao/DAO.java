@@ -217,9 +217,9 @@ public abstract class DAO<T> {
 			object = document.toObject(type);
 		} else {
 			Object proxy = document.toObject(proxyType);
+			Class<?> superType = proxyType.getSuperclass();
 			try {
-				Field field = proxyType.getField("that");
-				field.setAccessible(true);
+				Field field = superType.getDeclaredField("that");
 				object = (T) field.get(proxy);
 			} catch (NoSuchFieldException exception) {
 				throw new BytecodeFirestoreException(exception);
