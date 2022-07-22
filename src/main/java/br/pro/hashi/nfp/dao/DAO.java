@@ -7,10 +7,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Stack;
 import java.util.concurrent.ExecutionException;
 
 import com.google.cloud.WriteChannel;
@@ -53,15 +55,33 @@ public abstract class DAO<T> {
 		}
 		this.path = clean(path);
 
-		Class<?> type = getClass();
-		Class<?> ancestor = type.getSuperclass();
-		while (!ancestor.equals(DAO.class)) {
-			type = ancestor;
-			ancestor = type.getSuperclass();
+		int i = 0;
+		Stack<Class<?>> stack = new Stack<>();
+
+		Class<?> subType = getClass();
+		do {
+			stack.push(subType);
+			subType = subType.getSuperclass();
+		} while (!subType.equals(DAO.class));
+
+		Type type;
+		while (true) {
+			subType = stack.pop();
+			ParameterizedType genericType = (ParameterizedType) subType.getGenericSuperclass();
+			Type[] types = genericType.getActualTypeArguments();
+			type = types[i];
+			if (type instanceof TypeVariable) {
+				TypeVariable<?>[] subVariables = subType.getTypeParameters();
+				TypeVariable<?> variable = (TypeVariable<?>) type;
+				i = 0;
+				while (!subVariables[i].equals(variable)) {
+					i++;
+				}
+			} else {
+				break;
+			}
 		}
-		ParameterizedType genericType = (ParameterizedType) type.getGenericSuperclass();
-		Type[] types = genericType.getActualTypeArguments();
-		this.type = (Class<T>) types[0];
+		this.type = (Class<T>) type;
 
 		this.firebase = null;
 		this.firestore = null;

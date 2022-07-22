@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.hashiprobr</groupId>
   <artifactId>nfp-dao</artifactId>
-  <version>4.0.1</version>
+  <version>4.0.2</version>
   <name>io.github.hashiprobr:nfp-dao</name>
   <description>Not-For-Production DAO framework based on Cloud Firestore and Storage.</description>
   <url>https://github.com/hashiprobr/nfp-java-dao</url>
