@@ -101,7 +101,7 @@ import br.pro.hashi.nfp.dao.Firebase;
 import br.pro.hashi.nfp.dao.FirebaseManager;
 
 public static void main(String[] args) {
-		FirebaseManager manager = Firebase.manager();
+    FirebaseManager manager = Firebase.manager();
     Firebase firebase = manager.getFromCredentials("main.json");
     firebase.connect();
 }
@@ -298,26 +298,26 @@ import br.pro.hashi.nfp.dao.annotation.Autokey;
 import br.pro.hashi.nfp.dao.annotation.File;
 
 public class Entry {
-	@Autokey
-	private String key;
-	@File
-	private String photo;
+    @Autokey
+    private String key;
+    @File
+    private String photo;
 
-	public String getKey() {
-		return key;
-	}
+    public String getKey() {
+        return key;
+    }
 
-	public void setKey(String key) {
-		this.key = key;
-	}
+    public void setKey(String key) {
+        this.key = key;
+    }
 
-	public String getPhoto() {
-		return photo;
-	}
+    public String getPhoto() {
+        return photo;
+    }
 
-	public void setPhoto(String photo) {
-		this.photo = photo;
-	}
+    public void setPhoto(String photo) {
+        this.photo = photo;
+    }
 }
 ```
 
@@ -364,35 +364,35 @@ import br.pro.hashi.nfp.dao.annotation.Autokey;
 import br.pro.hashi.nfp.dao.annotation.File;
 
 public class Entry {
-	@Autokey
-	private String key;
-	private LocalDateTime timestamp;
-	@File
-	private String photo;
+    @Autokey
+    private String key;
+    private LocalDateTime timestamp;
+    @File
+    private String photo;
 
-	public String getKey() {
-		return key;
-	}
+    public String getKey() {
+        return key;
+    }
 
-	public void setKey(String key) {
-		this.key = key;
-	}
+    public void setKey(String key) {
+        this.key = key;
+    }
 
-	public LocalDateTime getTimestamp() {
-		return timestamp;
-	}
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
 
-	public void setTimestamp(LocalDateTime timestamp) {
-		this.timestamp = timestamp;
-	}
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
 
-	public String getPhoto() {
-		return photo;
-	}
+    public String getPhoto() {
+        return photo;
+    }
 
-	public void setPhoto(String photo) {
-		this.photo = photo;
-	}
+    public void setPhoto(String photo) {
+        this.photo = photo;
+    }
 }
 ```
 
@@ -404,13 +404,13 @@ to override the getter and the setter.
 import br.pro.hashi.nfp.dao.Adapter;
 
 public class EntryAdapter extends Adapter<Entry> {
-	public long getTimestamp() {
-		return that.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-	}
+    public long getTimestamp() {
+        return that.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    }
 
-	public void setTimestamp(long timestamp) {
-		that.setTimestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault()));
-	}
+    public void setTimestamp(long timestamp) {
+        that.setTimestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault()));
+    }
 }
 ```
 
