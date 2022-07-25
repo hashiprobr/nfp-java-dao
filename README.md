@@ -18,18 +18,16 @@ Quick setup
 
 3) Create a **Firestore Database** in the project.
 
-4) Create a **Storage** in the project. Take note of its URL.
-
-5) Open the project settings (⚙) and download a new private key:
+4) Open the project settings (⚙) and download a credentials file:
 
    * open the **Service Accounts** tab;
 
    * click on the **Generate New Private Key** button and confirm.
 
-6) Rename the private key to something simpler like `main.json` and move it to
-   somewhere safe. **Never commit this file, as it is private.**
+5) Rename the credentials file to something simpler like `main.json` and move it
+   to somewhere safe. **Never commit this file, as it is private.**
 
-7) [Add the framework to your
+6) [Add the framework to your
    project.](https://mvnrepository.com/artifact/io.github.hashiprobr/nfp-dao)
 
 
@@ -47,6 +45,8 @@ the actual value is obtained from `toString()`.
 In the example below, we assume that the `id` of an user is unique.
 
 ``` java
+import br.pro.hashi.nfp.dao.annotation.Key;
+
 public class User {
     @Key
     private int id;
@@ -79,6 +79,8 @@ Firestore collection where you want the objects to be stored.
 In the example below, we define that the collection is named `"users"`.
 
 ``` java
+import br.pro.hashi.nfp.dao.DAO;
+
 public class UserDAO extends DAO<User> {
     public UserDAO() {
         super("users");
@@ -91,12 +93,16 @@ public class UserDAO extends DAO<User> {
 You need to open a Firebase connection to use a DAO, but you only need to do
 this once.
 
-In the example below, we assume that `"main.json"` is the private key and
-`"example-12345.appspot.com"` is the aforementioned URL of the Storage.
+In the example below, we assume that `"main.json"` is the path to the
+credentials file.
 
 ``` java
+import br.pro.hashi.nfp.dao.Firebase;
+import br.pro.hashi.nfp.dao.FirebaseManager;
+
 public static void main(String[] args) {
-    Firebase firebase = Firebase.Manager().create("main.json", "example-12345.appspot.com");
+		FirebaseManager manager = Firebase.manager();
+    Firebase firebase = manager.getFromCredentials("main.json");
     firebase.connect();
 }
 ```
@@ -120,7 +126,7 @@ User user = dao.retrieve(123);
 ```
 
 ``` java
-User user = new User(123, "Jane Doe");
+User user = new User(123, "Jack Doe");
 dao.update(user);
 ```
 
@@ -133,12 +139,14 @@ Objects with automatic keys
 ---------------------------
 
 If none of the class fields are unique, it is possible to add a new string field
-and annotate it with `@Autokey`. This will make it be defined automatically.
+and annotate it with `@Autokey`. This will make it be generated automatically.
 
 In the example below, we assume that the `name` of a group is not unique, so it
 cannot be used as the key.
 
 ``` java
+import br.pro.hashi.nfp.dao.annotation.Autokey;
+
 public class Group {
     @Autokey
     private String key;
@@ -172,8 +180,8 @@ public class GroupDAO extends DAO<Group> {
 }
 ```
 
-Using the DAO is also the same, with the added observation that `create` returns
-the key that was created automatically.
+Using the DAO is also the same, with the added observation that `create` writes
+the generated key to the object.
 
 ``` java
 GroupDAO dao = new GroupDAO();
@@ -181,7 +189,9 @@ GroupDAO dao = new GroupDAO();
 
 ``` java
 Group group = new Group("Owners");
-String key = dao.create(group);
+String key = group.getKey(); // before creation, returns null
+dao.create(group);
+String key = group.getKey(); // after creation, returns the generated key
 ```
 
 ``` java
@@ -199,40 +209,18 @@ dao.delete(key);
 ```
 
 
-Batch operations
-----------------
+Partial update
+--------------
 
-All four CRUD methods have a list version.
+If you only want to update specific fields, you can pass a `Map<String, Object>`
+to `update` instead of an instance of the class.
 
-* `public List<String> create(List<T> values)`
-
-* `public List<T> retrieve(List<?> keys)`
-
-* `public void update(List<T> values)`
-
-* `public void delete(List<?> keys)`
-
-
-File operations
----------------
-
-All four CRUD methods have a file version.
-
-* `public String create(Object key, String name, InputStream stream)`
-
-* `public String retrieve(Object key, String name)`
-
-* `public String update(Object key, String name, InputStream stream)`
-
-* `public void delete(Object key, String name)`
-
-These methods are supposed to be used for a file that is directly related to a
-storable object. Therefore, the file path is `<collection>/<key>/<name>` and it
-is expected that the key is from this object.
-
-The `create`, `retrieve`, and `update` methods return an URL that can be used to
-access the file as an static resource. For example, as the `src` of an `img`.
-Please note that, due to some limitations, **updating a file changes its URL**.
+``` java
+Map<String, Object> fields = new HashMap<>();
+fields.put("key", key);
+fields.put("name", "Admins");
+dao.update(fields);
+```
 
 
 Query operations
@@ -245,11 +233,14 @@ The `retrieve` and `delete` methods have a query version.
 * `public void delete(Selection selection)`
 
 To build a selection, you only need to call a select method from the DAO. This
-method can be chained with the `orderBy`, `descending`, `offset`, and `limit`
-methods for query constraints.
+method can be chained with the `orderBy`, `limit`, and `limitToLast` methods for
+query constraints.
+
+The `orderBy` method accepts an option boolean to indicate if you want the order
+to be descending.
 
 ``` java
-Selection selection = dao.select().orderBy("name").descending();
+Selection selection = dao.selectAll().orderBy("name", true);
 List<User> users = dao.retrieve(selection);
 ```
 
@@ -260,17 +251,7 @@ dao.delete(selection)
 
 All select methods available are listed below.
 
-* `select()`: all objects.
-
-* `select(List<?> keys)`: objects with keys in the list.
-
-* `selectExcept(List<?> keys)`: objects with keys not in the list.
-
-* `selectWhereIn(String name, List<?> values)`: objects with the value of
-  field `name` in the list.
-
-* `selectWhereNotIn(String name, List<?> values)`: objects with the value
-  of field `name` not in the list.
+* `selectAll()`: all objects.
 
 * `selectWhereEqualTo(String name, Object value)`: objects with the value of
   field `name` equal to `value`.
@@ -297,3 +278,153 @@ All select methods available are listed below.
 
 * `selectWhereContainsAny(String name, Object value)`: objects with the value of
   field `name` containing `value`. *(assumes the field is an array)*
+
+* `selectWhereIn(String name, List<?> values)`: objects with the value of
+  field `name` in the list.
+
+* `selectWhereNotIn(String name, List<?> values)`: objects with the value
+  of field `name` not in the list.
+
+
+File operations
+---------------
+
+The `create` and `update` methods accept an optional `Map<String, InputStream>`
+that can be used to upload files. In order to use this parameter, the class must
+have string fields annotated with `@File`.
+
+``` java
+import br.pro.hashi.nfp.dao.annotation.Autokey;
+import br.pro.hashi.nfp.dao.annotation.File;
+
+public class Entry {
+	@Autokey
+	private String key;
+	@File
+	private String photo;
+
+	public String getKey() {
+		return key;
+	}
+
+	public void setKey(String key) {
+		this.key = key;
+	}
+
+	public String getPhoto() {
+		return photo;
+	}
+
+	public void setPhoto(String photo) {
+		this.photo = photo;
+	}
+}
+```
+
+If such fields exist, you can use their names as the keys of the parameter.
+
+``` java
+EntryDAO dao = new EntryDAO();
+
+Entry entry = new Entry();
+
+Map<String, InputStream> streams = new HashMap<>();
+streams.put("photo", new FileInputStream("something.png"));
+
+dao.create(entry, streams);
+```
+
+In the example above, the DAO will:
+
+* upload the file to Firebase Storage;
+
+* generate a public URL to access the file;
+
+* store the URL in the object;
+
+* save the object as usual.
+
+This obviously assumes that the file can be public. It is made specifically to
+create static resources.
+
+Please note that, due to some limitations, **updating a file changes its URL**.
+
+
+Custom serialization
+--------------------
+
+Firestore cannot store arbitrary types, so in some cases you need to "translate"
+the values to something it supports. For example, let's suppose the `Entry`
+class has also a `LocalDateTime` field.
+
+``` java
+import java.time.LocalDateTime;
+
+import br.pro.hashi.nfp.dao.annotation.Autokey;
+import br.pro.hashi.nfp.dao.annotation.File;
+
+public class Entry {
+	@Autokey
+	private String key;
+	private LocalDateTime timestamp;
+	@File
+	private String photo;
+
+	public String getKey() {
+		return key;
+	}
+
+	public void setKey(String key) {
+		this.key = key;
+	}
+
+	public LocalDateTime getTimestamp() {
+		return timestamp;
+	}
+
+	public void setTimestamp(LocalDateTime timestamp) {
+		this.timestamp = timestamp;
+	}
+
+	public String getPhoto() {
+		return photo;
+	}
+
+	public void setPhoto(String photo) {
+		this.photo = photo;
+	}
+}
+```
+
+Firestore does not support `LocalDateTime`, so an attempt to create an instance
+of this class will throw an error. To solve this, we can write an adapter class
+to override the getter and the setter.
+
+``` java
+import br.pro.hashi.nfp.dao.Adapter;
+
+public class EntryAdapter extends Adapter<Entry> {
+	public long getTimestamp() {
+		return that.getTimestamp().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+	}
+
+	public void setTimestamp(long timestamp) {
+		that.setTimestamp(LocalDateTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault()));
+	}
+}
+```
+
+This class can then be passed as an optional parameter of `create`, `retrieve`,
+and `update`.
+
+``` java
+dao.create(entry, EntryAdapter.class);
+```
+
+``` java
+Entry entry = dao.retrieve(key, EntryAdapter.class);
+```
+
+``` java
+dao.update(entry, EntryAdapter.class);
+```
